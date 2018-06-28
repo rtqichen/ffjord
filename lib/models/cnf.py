@@ -137,7 +137,7 @@ class CNF(nn.Module):
         if reverse:
             integration_times = _flip(integration_times, 0)
 
-        outputs = self.odeint(self.odefunc, inputs, integration_times, atol=1e-6, rtol=1e-5)
+        outputs = self.odeint(self.odefunc, inputs, integration_times.to(inputs), atol=1e-6, rtol=1e-5)
         z_t, logpz_t = outputs[:, :, :-1], outputs[:, :, -1:]
 
         if len(integration_times) == 2:

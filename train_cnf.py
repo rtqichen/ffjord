@@ -31,6 +31,8 @@ parser.add_argument('--lr-min', type=float, default=1e-4)
 parser.add_argument('--lr-interval', type=float, default=2000)
 parser.add_argument('--weight_decay', type=float, default=1e-6)
 
+parser.add_argument('--adjoint', action='store_true')
+parser.add_argument('--resume', type=str, default=None)
 parser.add_argument('--save', type=str, default='experiments/cnf')
 parser.add_argument('--viz_freq', type=int, default=100)
 parser.add_argument('--gpu', type=int, default=0)
@@ -52,8 +54,14 @@ def update_lr(optimizer, itr):
 
 if __name__ == '__main__':
 
+    _odeint = integrate.odeint_adjoint if args.adjoint else integrate.odeint
     dims = tuple(map(int, args.dims.split(',')))
-    cnf = models.CNF(dims=dims, T=args.time_length, odeint=integrate.odeint).to(device)
+    cnf = models.CNF(dims=dims, T=args.time_length, odeint=_odeint)
+    if args.resume is not None:
+        checkpt = torch.load(args.resume)
+        cnf.load_state_dict(checkpt['state_dict'])
+    cnf.to(device)
+
     optimizer = optim.Adam(cnf.parameters(), lr=args.lr_max, weight_decay=args.weight_decay)
 
     time_meter = utils.RunningAverageMeter(0.97)
