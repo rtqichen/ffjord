@@ -25,7 +25,7 @@ parser.add_argument('--dims', type=str, default='2,64,64,10')
 parser.add_argument('--time_length', type=float, default=1.0)
 
 parser.add_argument('--niters', type=int, default=10000)
-parser.add_argument('--batch_size', type=int, default=200)
+parser.add_argument('--batch-size', type=int, default=200)
 parser.add_argument('--lr-max', type=float, default=5e-4)
 parser.add_argument('--lr-min', type=float, default=1e-4)
 parser.add_argument('--lr-interval', type=float, default=2000)
