@@ -98,7 +98,7 @@ if __name__ == '__main__':
             ax.set_xlim(-4, 4)
             ax.set_ylim(-4, 4)
             cmap = matplotlib.cm.get_cmap(None)
-            ax.set_axis_bgcolor(cmap(0.))
+            #ax.set_axis_bgcolor(cmap(0.))
             ax.invert_yaxis()
             ax.get_xaxis().set_ticks([])
             ax.get_yaxis().set_ticks([])

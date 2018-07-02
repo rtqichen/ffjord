@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import torch
+import time
 
 LOW = -4
 HIGH = 4
@@ -51,7 +52,7 @@ def plt_flow(prior_logdensity, transform, ax, low=LOW, high=HIGH, npts=800, titl
     ax.set_xlim(LOW, HIGH)
     ax.set_ylim(-4, 4)
     cmap = matplotlib.cm.get_cmap(None)
-    ax.set_axis_bgcolor(cmap(0.))
+    #ax.set_axis_bgcolor(cmap(0.))
     ax.invert_yaxis()
     ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])
@@ -78,6 +79,7 @@ def plt_samples(samples, ax, title='$x ~ p(x)$'):
 
 def visualize_transform(potential_or_samples, prior_sample, prior_density, transform, samples=True, device='cpu'):
     """Produces visualization for the model density and samples from the model."""
+    _t = time.time()
     plt.clf()
     ax = plt.subplot(1, 3, 1, aspect='equal')
     if samples:
@@ -85,8 +87,11 @@ def visualize_transform(potential_or_samples, prior_sample, prior_density, trans
     else:
         plt_potential_func(potential_or_samples, ax)
 
-    ax = plt.subplot(1, 3, 2, aspect='equal')
-    plt_flow(prior_density, transform, ax, device=device)
+
+    #ax = plt.subplot(1, 3, 2, aspect='equal')
+    #plt_flow(prior_density, transform, ax, device=device)
 
     ax = plt.subplot(1, 3, 3, aspect='equal')
     plt_flow_samples(prior_sample, transform, ax, device=device)
+    print("time for plt", time.time() - _t)
+

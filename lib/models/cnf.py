@@ -6,7 +6,6 @@ __all__ = ['CNF']
 
 
 class CNFBottleneck(nn.Module):
-
     def __init__(self, prev_dim, hidden_dim, activation_fn=F.tanh):
         super(CNFBottleneck, self).__init__()
         self.prev_dim = prev_dim
@@ -39,13 +38,21 @@ class CNFBottleneck(nn.Module):
 
 
 class Identity(nn.Module):
-
     def forward(self, t, x):
         return x
 
 
-class HypernetMLP(nn.Module):
+# standard mlp
+def MLP(dims, activation_fn=nn.Tanh):
+    args = []
+    for i in range(1, len(dims)):
+        din, dout = dims[i - 1], dims[i]
+        args.append(nn.Linear(din, dout))
+        args.append(activation_fn())
+    return nn.Sequential(*args)
 
+
+class HypernetMLP(nn.Module):
     def __init__(self, dims, hypernet_dim=64, activation_fn=F.tanh):
         super(HypernetMLP, self).__init__()
         assert len(dims) >= 2
