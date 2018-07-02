@@ -19,10 +19,11 @@ class Preprocess(object):
         num_bits (int): number of bits to use, min = 1, max = 8
     """
 
-    def __init__(self, num_bits):
+    def __init__(self, num_bits, reverse=False):
         self._num_bits = num_bits
         self.num_bins = 2 ** num_bits
         self.div_val = 2 ** (8 - num_bits)
+        self.reverse = reverse
 
     def __call__(self, tensor):
         """
@@ -32,6 +33,12 @@ class Preprocess(object):
         Returns:
             Tensor: Tensor with specified bit-rate
         """
+        if self.reverse:
+            return self.backward(tensor)
+        else:
+            return self.forward(tensor)
+
+    def forward(self, tensor):
         # scale to [0, 256)
         tensor = (255 * tensor).type(torch.int32)
         # downsample bits
@@ -39,8 +46,15 @@ class Preprocess(object):
         # add noise
         tensor = tensor.type(torch.float32) + torch.rand(tensor.shape)
         tensor = tensor / self.num_bins
-        # now in range [0, 1.)
+        # now in range [0, 1.), return in range [-.5, .5)
         return tensor - .5
+
+    def backward(self, tensor):
+        # shift to [0., 1)
+        tensor = tensor + .5
+        # scale to [0, 255]
+        tensor = (tensor * 256).type(torch.int32)
+        return tensor
 
     def __repr__(self):
         return self.__class__.__name__ + '(num_bits={})'.format(self._num_bits)

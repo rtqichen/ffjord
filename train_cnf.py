@@ -20,7 +20,7 @@ import integrate
 import lib.models as models
 import lib.toy_data as toy_data
 import lib.utils as utils
-from lib.visualize_flow import visualize_transform
+from lib.visualize_flow import visualize_transform, visualize_samples
 
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
 parser.add_argument('--data',
@@ -64,11 +64,6 @@ def get_dataset(args):
         trans = tforms.Compose([tforms.ToTensor(), utils.Preprocess(args.num_bits), lambda x: x.view(28 ** 2)])
         train_set = dset.MNIST(root='./data', train=True, transform=trans, download=True)
         test_set = dset.MNIST(root='./data', train=False, transform=trans, download=True)
-        # im = train_set[0][0].numpy().reshape(28, 28, 1)
-        # print(im, im.min(), im.max(), im.shape)
-        # cv2.imshow("im", ((im + .5) * 255).astype(np.uint8))
-        # cv2.waitKey(0)
-        # 1/0
     else:
         dataset = toy_data.inf_train_gen(args.data, batch_size=args.data_size)
         dataset = [(d, 0) for d in dataset]  # add dummy labels
@@ -174,10 +169,12 @@ if __name__ == '__main__':
                     }, os.path.join(args.save, 'checkpt.pth'))
 
         # visualize samples and density
-        if epoch % args.viz_freq == 0:
+        if True:  # epoch % args.viz_freq == 0:
             with torch.no_grad():
                 if args.data == "mnist":
-                    1/0
+                    samples = visualize_samples(lambda n: torch.randn((n, 784)), cnf)
+                    fig_filename = os.path.join(args.save, "figs", "epoch_{}.jpg".format(epoch))
+                    cv2.imwrite(fig_filename, (255 * samples))
                 else:
                     p_samples = toy_data.inf_train_gen(args.data, batch_size=10000)
                     plt.figure(figsize=(9, 3))
@@ -188,5 +185,7 @@ if __name__ == '__main__':
                     fig_filename = os.path.join(args.save, 'figs', '{:04d}.jpg'.format(epoch))
                     utils.makedirs(os.path.dirname(fig_filename))
                     plt.savefig(fig_filename)
+
+
 
         end = time.time()
