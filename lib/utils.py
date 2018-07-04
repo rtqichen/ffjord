@@ -1,6 +1,7 @@
 import os
 import logging
 import torch
+import torch.functional as F
 
 
 def makedirs(dirname):
@@ -19,13 +20,11 @@ class Preprocess(object):
         num_bits (int): number of bits to use, min = 1, max = 8
     """
 
-    def __init__(self, num_bits, reverse=False):
-        self._num_bits = num_bits
-        self.num_bins = 2 ** num_bits
-        self.div_val = 2 ** (8 - num_bits)
+    def __init__(self, alpha=.05, reverse=False):
         self.reverse = reverse
+        self.alpha = alpha
 
-    def __call__(self, tensor):
+    def __call__(self, tensor, alpha=.05):
         """
         Args:
             tensor (Tensor): Tensor of floats in range [0., 1.]
@@ -38,37 +37,24 @@ class Preprocess(object):
         else:
             return self.forward(tensor)
 
-    def forward(self, tensor):
-        # scale to [0, 256)
-        tensor = (255 * tensor).type(torch.int32)
-        # downsample bits
-        tensor = tensor / self.div_val
-        # add noise
-        tensor = tensor.type(torch.float32) + torch.rand(tensor.shape)
-        tensor = tensor / self.num_bins
-        # now in range [0, 1.), return in range [-.5, .5)
-        return tensor - .5
+    def forward(self, x):
+        x = self._add_noise(x)
+        s = self.alpha + (1 - 2 * self.alpha) * x
+        y = torch.log(s) - torch.log(1 - s)
+        return y
 
-    def backward(self, tensor):
-        # shift to [0., 1)
-        tensor = tensor + .5
-        # scale to [0, 255]
-        tensor = (tensor * 256).type(torch.int32)
-        return tensor
+    def backward(self, y):
+        x = (torch.sigmoid(y) - self.alpha) / (1 - 2 * self.alpha)
+        return x
+
+    def _add_noise(self, x):
+        noise = x.new().resize_as_(x).uniform_()
+        x = x * 255 + noise
+        x = x / 256
+        return x
 
     def __repr__(self):
         return self.__class__.__name__ + '(num_bits={})'.format(self._num_bits)
-#
-# def preprocess(x, n_bits_x=None, rand=True):
-#     x = tf.cast(x, 'float32')
-#     if n_bits_x < 8:
-#         x = tf.floor(x / 2 ** (8 - n_bits_x))
-#     n_bins = 2. ** n_bits_x
-#     # add [0, 1] random noise
-#     if rand:
-#         x = x + tf.random_uniform(tf.shape(x), 0., 1.)
-#     x = x / n_bins - .5
-#     return x
 
 
 def get_logger(logpath, filepath, package_files=[],

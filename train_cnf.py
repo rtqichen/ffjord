@@ -61,9 +61,17 @@ def update_lr(optimizer, itr):
 
 def get_dataset(args):
     if args.data == "mnist":
-        trans = tforms.Compose([tforms.ToTensor(), utils.Preprocess(args.num_bits), lambda x: x.view(28 ** 2)])
+        trans = tforms.Compose([tforms.ToTensor(), utils.Preprocess(), lambda x: x.view(28 ** 2)])
+        #trans = tforms.Compose([tforms.ToTensor(), lambda x: x.view(28 ** 2)])
         train_set = dset.MNIST(root='./data', train=True, transform=trans, download=True)
         test_set = dset.MNIST(root='./data', train=False, transform=trans, download=True)
+        # pp = utils.Preprocess(reverse=True)
+        # im = train_set[0][0]
+        # print(im, im.min(), im.max())
+        # impp = pp(im)
+        # print(impp, impp.min(), impp.max())
+        # import torch.functional as F
+        # 1/0
     else:
         dataset = toy_data.inf_train_gen(args.data, batch_size=args.data_size)
         dataset = [(d, 0) for d in dataset]  # add dummy labels
@@ -99,6 +107,7 @@ def get_loss(x):
 
 
 if __name__ == '__main__':
+    post_process = utils.Preprocess(reverse=True)
     # get deivce
     device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
     cvt = lambda x: x.type(torch.float32).to(device)
@@ -144,6 +153,13 @@ if __name__ == '__main__':
                 print('Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f})'.format(
                     itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg)
                 )
+                # with torch.no_grad():
+                #     samples = visualize_samples(
+                #         lambda n: torch.randn((n, 784)).type(torch.float32),
+                #         cnf, device=device, post_process=post_process
+                #     )
+                #     fig_filename = os.path.join(args.save, "figs", "epoch_{}.jpg".format(itr))
+                #     cv2.imwrite(fig_filename, (255 * samples))
 
             itr += 1
 
@@ -172,7 +188,10 @@ if __name__ == '__main__':
         if True:  # epoch % args.viz_freq == 0:
             with torch.no_grad():
                 if args.data == "mnist":
-                    samples = visualize_samples(lambda n: torch.randn((n, 784)), cnf)
+                    samples = visualize_samples(
+                        lambda n: torch.randn((n, 784)).type(torch.float32),
+                        cnf, device=device, post_process=post_process
+                    )
                     fig_filename = os.path.join(args.save, "figs", "epoch_{}.jpg".format(epoch))
                     cv2.imwrite(fig_filename, (255 * samples))
                 else:

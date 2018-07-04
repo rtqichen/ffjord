@@ -79,10 +79,10 @@ def plt_samples(samples, ax, title='$x ~ p(x)$'):
 
 
 def visualize_samples(prior_sample, transform, device='cpu', num_samples=100, post_process=lambda x: x):
-    z = prior_sample(num_samples)
+    z = prior_sample(num_samples).type(torch.float32).to(device)
     zk = transform(z)
     x = post_process(zk).cpu().numpy().reshape([-1, 28, 28, 1])
-    x = np.clip(x, 0, 1)
+    x = np.clip(x, 0., 1.)
     x = x.reshape([10, 10, 28, 28, 1])
     x = np.hstack([_x for _x in x])
     x = np.hstack([_x for _x in x])
