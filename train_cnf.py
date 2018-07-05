@@ -129,14 +129,13 @@ if __name__ == '__main__':
 
     time_meter = utils.RunningAverageMeter(0.97)
     loss_meter = utils.RunningAverageMeter(0.97)
-    end = time.time()
     best_loss = float('inf')
     itr = 0
     for epoch in range(1, args.num_epochs + 1):
         for _, (x, y) in enumerate(train_loader):
             update_lr(optimizer, itr)
             optimizer.zero_grad()
-
+            start = time.time()
             # cast data and move to device
             x = cvt(x)
 
@@ -146,7 +145,7 @@ if __name__ == '__main__':
 
             optimizer.step()
 
-            time_meter.update(time.time() - end)
+            time_meter.update(time.time() - start)
             loss_meter.update(loss.item())
 
             if itr % args.log_freq == 0:
@@ -173,9 +172,8 @@ if __name__ == '__main__':
                     x = cvt(x)
                     loss = get_loss(x)
                     losses.append(loss.item())
-                end = time.time()
                 loss = np.mean(losses)
-                print("Epoch {:04d} | Time {:.4f}, Loss {:.6f}".format(epoch, end - start, loss))
+                print("Epoch {:04d} | Time {:.4f}, Loss {:.6f}".format(epoch, time.time() - start, loss))
                 if loss < best_loss:
                     best_loss = loss
                     utils.makedirs(args.save)
@@ -193,6 +191,7 @@ if __name__ == '__main__':
                         cnf, device=device, post_process=post_process
                     )
                     fig_filename = os.path.join(args.save, "figs", "epoch_{}.jpg".format(epoch))
+                    utils.makedirs(os.path.join(args.save, "figs"))
                     cv2.imwrite(fig_filename, (255 * samples))
                 else:
                     p_samples = toy_data.inf_train_gen(args.data, batch_size=10000)
@@ -204,7 +203,3 @@ if __name__ == '__main__':
                     fig_filename = os.path.join(args.save, 'figs', '{:04d}.jpg'.format(epoch))
                     utils.makedirs(os.path.dirname(fig_filename))
                     plt.savefig(fig_filename)
-
-
-
-        end = time.time()
