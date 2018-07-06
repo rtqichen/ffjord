@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 __all__ = ['CNF']
 
@@ -160,3 +161,46 @@ def _flip(x, dim):
     indices = [slice(None)] * x.dim()
     indices[dim] = torch.arange(x.size(dim) - 1, -1, -1, dtype=torch.long, device=x.device)
     return x[tuple(indices)]
+
+
+if __name__ == "__main__":
+    def divergence_bf(z, x):
+        nin = x.shape[1]
+        zs = z.sum(dim=0)
+        div = 0.
+        for i in range(nin):
+            dzidxi = torch.autograd.grad(zs[i], x, create_graph=True)[0][:, i]
+            div += dzidxi
+        return div
+
+    def divergence_approx(z, x):
+        e = torch.randn(z.shape)
+        e_dzdx = torch.autograd.grad(z, x, e, create_graph=True)[0]
+        #print(e.shape)
+        #print(e_dzdx.shape)
+        e_dzdx_e = e_dzdx * e
+        approx_tr_dzdx = e_dzdx_e.sum(dim=1)
+        #print(approx_tr_dzdx)
+        return approx_tr_dzdx
+
+    dim_in = 10
+    dim_h = 10
+    batch_size = 16
+
+    net = nn.Sequential(nn.Linear(dim_in, dim_h), nn.Tanh(), nn.Linear(dim_h, dim_h), nn.Tanh(), nn.Linear(dim_h, dim_in))
+
+    x = torch.randn(batch_size, dim_in, requires_grad=True)
+    z = net(x)
+    div_bf = divergence_bf(z, x)
+    print(div_bf.mean())
+    n_samples = 100
+    da = 0.
+    ss = []
+    for i in range(n_samples):
+        div = divergence_approx(z, x)
+        da += div
+        ss.append(div.mean().detach().numpy())
+
+    da = da / n_samples
+    print(da.mean())
+    print(np.var(ss, axis=0))

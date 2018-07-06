@@ -13,8 +13,7 @@ def makedirs(dirname):
 class Preprocess(object):
     """
     Preprocesses a tensor defined on compact input [0, 1.]
-    Given a number of bits in [1, ..., 8], down samples bit-rate to num_bits, adds unifmorm
-    noise of magnitude equal to the lost precision and scales to be in [-1, 1]
+    Adds uniform noise and scales back to [0., 1.)
 
     Args:
         num_bits (int): number of bits to use, min = 1, max = 8
@@ -54,7 +53,7 @@ class Preprocess(object):
         return x
 
     def __repr__(self):
-        return self.__class__.__name__ + '(num_bits={})'.format(self._num_bits)
+        return self.__class__.__name__ + '(backward={}, alpha={})'.format(self.reverse, self.alpha)
 
 
 def get_logger(logpath, filepath, package_files=[],

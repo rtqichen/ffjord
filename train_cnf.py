@@ -191,7 +191,7 @@ if __name__ == '__main__':
                         cnf, device=device, post_process=post_process
                     )
                     fig_filename = os.path.join(args.save, "figs", "epoch_{}.jpg".format(epoch))
-                    utils.makedirs(os.path.join(args.save, "figs"))
+                    utils.makedirs(os.path.dirname(fig_filename))
                     cv2.imwrite(fig_filename, (255 * samples))
                 else:
                     p_samples = toy_data.inf_train_gen(args.data, batch_size=10000)
