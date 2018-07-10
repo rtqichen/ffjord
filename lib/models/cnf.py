@@ -6,129 +6,111 @@ import numpy as np
 __all__ = ['CNF']
 
 
-class CNFBottleneck(nn.Module):
-    def __init__(self, prev_dim, hidden_dim, activation_fn=F.tanh):
-        super(CNFBottleneck, self).__init__()
-        self.prev_dim = prev_dim
-        self.hidden_dim = hidden_dim
-        self.activation_fn = activation_fn
-
-        self.fc_layer = nn.Linear(prev_dim, hidden_dim)
-
-    def forward(self, elem_x):
-        """
-        Returns:
-            outputs (batch_size, next_dim)
-            elem_grad_inputs (hidden_dim, batch_size, prev_dim)
-            elem_outputs (hidden_dim, batch_size, 1)
-        """
-        prev_dim, hidden_dim = self.prev_dim, self.hidden_dim
-        w, b = self.fc_layer.weight, self.fc_layer.bias
-
-        # (hidden_dim, batch_size, 1)
-        elem_outputs = self.activation_fn(
-            torch.matmul(elem_x, w.view(hidden_dim, prev_dim, 1)) + b.view(hidden_dim, 1, 1))
-
-        # (hidden_dim, batch_size, prev_dim)
-        # each elem_grad_input[j] is dh_j/dx
-        elem_grad_inputs = torch.autograd.grad(elem_outputs.sum(), elem_x, create_graph=True)[0]
-        # (batch_size, hidden_dim)
-        outputs = elem_outputs.permute([2, 1, 0]).view(elem_x.shape[1], self.hidden_dim)
-
-        return outputs, elem_grad_inputs, elem_outputs
-
-
-class Identity(nn.Module):
-    def forward(self, t, x):
-        return x
-
-
-# standard mlp
-def MLP(dims, activation_fn=nn.Tanh):
-    args = []
-    for i in range(1, len(dims)):
-        din, dout = dims[i - 1], dims[i]
-        args.append(nn.Linear(din, dout))
-        args.append(activation_fn())
-    return nn.Sequential(*args)
-
-
-class HypernetMLP(nn.Module):
-    def __init__(self, dims, hypernet_dim=64, activation_fn=F.tanh):
-        super(HypernetMLP, self).__init__()
-        assert len(dims) >= 2
-        self.dims = dims
-        layer_weights = []
-        weights_idx = 0
-        for i in range(len(dims) - 1):
-            layer_weights.append((i, weights_idx))
-            weights_idx += (dims[i] + 1) * dims[i + 1]
-        self.layer_weights = layer_weights
-        self.num_weights = weights_idx
+class HyperLinear(nn.Module):
+    def __init__(self, dim_in, dim_out, hypernet_dim=64, activation=nn.Tanh):
+        super(HyperLinear, self).__init__()
+        self.dim_in = dim_in
+        self.dim_out = dim_out
+        self.params_dim = dim_in * dim_out + dim_out
         self._hypernet = nn.Sequential(
             nn.Linear(1, hypernet_dim),
-            nn.Tanh(),
-            nn.Linear(hypernet_dim, self.num_weights), )
-        self.activation_fn = activation_fn
+            activation(),
+            nn.Linear(hypernet_dim, self.params_dim)
+        )
 
     def forward(self, t, x):
-        weights = self._hypernet(torch.tensor(t).type_as(x).view(1, 1)).view(-1)
-        for i, weights_idx in self.layer_weights:
-            in_dim, out_dim = self.dims[i], self.dims[i + 1]
-            w_offset = in_dim * out_dim
-            b_offset = out_dim
-            w = weights[weights_idx:weights_idx + w_offset].view(in_dim, out_dim)
-            b = weights[weights_idx + w_offset:weights_idx + w_offset + b_offset].view(1, out_dim)
-
-            x = torch.matmul(x, w) + b
-            if i < len(self.layer_weights) - 1:
-                x = self.activation_fn(x)
+        params = self._hypernet(t.view(1, 1)).view(-1)
+        b = params[:self.dim_out].view(1, self.dim_out)
+        w = params[self.dim_out:].view(self.dim_in, self.dim_out)
+        x = torch.matmul(x, w) + b
         return x
+
+
+class IgnoreLinear(nn.Module):
+    def __init__(self, dim_in, dim_out, **kwargs):
+        super(IgnoreLinear, self).__init__()
+        self._layer = nn.Linear(dim_in, dim_out)
+
+    def forward(self, t, x):
+        return self._layer(x)
+
+
+class ConcatLinear(nn.Module):
+    def __init__(self, dim_in, dim_out, **kwargs):
+        super(ConcatLinear, self).__init__()
+        self._layer = nn.Linear(dim_in + 1, dim_out)
+
+    def forward(self, t, x):
+        tt = torch.ones_like(x[:, :1]) * t
+        ttx = torch.cat([tt, x], 1)
+        return self._layer(ttx)
+
+
+def divergence_bf(dx, y, **kwargs):
+    sum_diag = 0.
+    for i in range(y.shape[1]):
+        sum_diag += torch.autograd.grad(dx[:, i].sum(), y, create_graph=True)[0].contiguous()[:, i].contiguous()
+    return sum_diag.contiguous()
+
+
+def divergence_approx(z, x, e=None):
+    if e is None:
+        e = torch.randn(z.shape)
+    e_dzdx = torch.autograd.grad(z, x, e, create_graph=True)[0]
+    e_dzdx_e = e_dzdx * e
+    approx_tr_dzdx = e_dzdx_e.sum(dim=1)
+    return approx_tr_dzdx
 
 
 class ODEfunc(nn.Module):
-
-    def __init__(self, dims):
+    def __init__(self, dims, layer_type="concat", layer_kwargs={}, nonlinearity=F.tanh, divergence_fn="approximate"):
         super(ODEfunc, self).__init__()
+        assert layer_type in ("ignore", "hyper", "concat")
+        assert divergence_fn in ("brute_force", "approximate")
         assert len(dims) >= 2
-        self.net1 = Identity() if len(dims) == 2 else HypernetMLP(dims=dims[:-1])
-        self.bottleneck = CNFBottleneck(dims[-2], dims[-1])
-        # TODO: use forward-mode autodiff to allow arbitrary output networks.
-        self.net2 = nn.Linear(dims[-1], dims[0])
+        self.nonlinearity = nonlinearity
+        base_layer = {"ignore": IgnoreLinear, "hyper": HyperLinear, "concat": ConcatLinear}[layer_type]
+        # build layers and add them
+        self.layers = []
+        for i in range(1, len(dims)):
+            dim_out = dims[i]
+            dim_in = dims[i - 1]
+            self.layers.append(base_layer(dim_in, dim_out, **layer_kwargs))
+        self.layers.append(base_layer(dims[-1], dims[0], **layer_kwargs))
+        for idx, layer in enumerate(self.layers):
+            self.add_module(str(idx), layer)
 
-        self.input_dim = dims[0]
-        self.bottleneck_dim = dims[-1]
+        if divergence_fn == "brute_force":
+            self.divergence_fn = divergence_bf
+        elif divergence_fn == "approximate":
+            self.divergence_fn = divergence_approx
 
     def forward(self, t, y):
+        # to tensor
+        t = torch.tensor(t).type_as(y)
         y = y[:, :-1]  # remove logp
         batchsize = y.shape[0]
 
         with torch.set_grad_enabled(True):
             y.requires_grad_(True)
-            Y = y[None].expand((self.bottleneck_dim, ) + y.shape)
-            H = self.net1(t, Y)
-            prehidden = H
-            h, elem_grad_prehidden, _ = self.bottleneck(H)
-            dx = self.net2(h)
+            t.requires_grad_(True)
+            dx = y
+            for l, layer in enumerate(self.layers):
+                dx = layer(t, dx)
+                # if not last layer, use nonlinearity
+                if l < len(self.layers) - 1:
 
-            # TODO: replace & generalize this with forward-mode autodiff.
-            grad_outputs = self.net2.weight.t().contiguous().view(self.bottleneck_dim, self.input_dim, 1)
-            grad_inputs = torch.autograd.grad(prehidden, Y, elem_grad_prehidden, create_graph=True)[0]
-            divergence = torch.matmul(grad_inputs, grad_outputs).sum(0).view(batchsize, 1)
+                    dx = self.nonlinearity(dx)
 
-        # sum_diag = 0.
-        # for i in range(y.shape[1]):
-        #     sum_diag += torch.autograd.grad(dx[:, i].sum(), y, retain_graph=True)[0][:, i]
-        # print(torch.mean(torch.abs(sum_diag - divergence.view(-1))))
-
+            divergence = self.divergence_fn(dx, y, e=self._e).view(batchsize, 1)
         return torch.cat([dx, -divergence], 1)
 
 
 class CNF(nn.Module):
 
-    def __init__(self, dims, T, odeint):
+    def __init__(self, dims, T, odeint, layer_type="concat", divergence_fn="approximate"):
         super(CNF, self).__init__()
-        self.odefunc = ODEfunc(dims)
+        self.odefunc = ODEfunc(dims, layer_type=layer_type, divergence_fn=divergence_fn)
         self.time_range = torch.tensor([0., float(T)])
         self.odeint = odeint
 
@@ -145,6 +127,7 @@ class CNF(nn.Module):
         if reverse:
             integration_times = _flip(integration_times, 0)
 
+        self.odefunc._e = torch.randn(z.shape)
         outputs = self.odeint(self.odefunc, inputs, integration_times.to(inputs), atol=1e-6, rtol=1e-5)
         z_t, logpz_t = outputs[:, :, :-1], outputs[:, :, -1:]
 
@@ -171,17 +154,7 @@ if __name__ == "__main__":
         for i in range(nin):
             dzidxi = torch.autograd.grad(zs[i], x, create_graph=True)[0][:, i]
             div += dzidxi
-        return div
-
-    def divergence_approx(z, x):
-        e = torch.randn(z.shape)
-        e_dzdx = torch.autograd.grad(z, x, e, create_graph=True)[0]
-        #print(e.shape)
-        #print(e_dzdx.shape)
-        e_dzdx_e = e_dzdx * e
-        approx_tr_dzdx = e_dzdx_e.sum(dim=1)
-        #print(approx_tr_dzdx)
-        return approx_tr_dzdx
+        return div.contiguous()
 
     dim_in = 10
     dim_h = 10

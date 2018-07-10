@@ -27,6 +27,8 @@ parser.add_argument('--data',
                     choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons', 'mnist'],
                     type=str, default='moons')
 parser.add_argument('--dims', type=str, default='64,64,10')
+parser.add_argument('--layer_type', type=str, default="ignore")
+parser.add_argument('--divergence_fn', type=str, default="approximate")
 parser.add_argument('--time_length', type=float, default=1.0)
 parser.add_argument('--num_bits', type=int, default=5)
 
@@ -95,12 +97,6 @@ def get_loss(x):
     # compute log q(z)
     logpz = standard_normal_logprob(z).sum(1, keepdim=True)
 
-    # forward to get logpx
-    # x_rec, logpx = cnf(z, logpz)
-    # _logpx = logpz - delta_logp
-    # print(torch.mean(torch.abs(_logpx - logpx)).item())
-    # print(torch.mean(torch.abs(x - x_rec)).item())
-
     logpx = logpz - delta_logp
     loss = -torch.mean(logpx)
     return loss
@@ -119,7 +115,12 @@ if __name__ == '__main__':
     dims = list(map(int, args.dims.split(',')))
     dims = tuple([28**2] + dims) if args.data == "mnist" else tuple([2] + dims)
 
-    cnf = models.CNF(dims=dims, T=args.time_length, odeint=_odeint)
+    cnf = models.CNF(
+        dims=dims, T=args.time_length,
+        odeint=_odeint, layer_type=args.layer_type,
+        divergence_fn=args.divergence_fn
+    )
+
     if args.resume is not None:
         checkpt = torch.load(args.resume)
         cnf.load_state_dict(checkpt['state_dict'])
@@ -152,13 +153,6 @@ if __name__ == '__main__':
                 print('Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f})'.format(
                     itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg)
                 )
-                # with torch.no_grad():
-                #     samples = visualize_samples(
-                #         lambda n: torch.randn((n, 784)).type(torch.float32),
-                #         cnf, device=device, post_process=post_process
-                #     )
-                #     fig_filename = os.path.join(args.save, "figs", "epoch_{}.jpg".format(itr))
-                #     cv2.imwrite(fig_filename, (255 * samples))
 
             itr += 1
 
