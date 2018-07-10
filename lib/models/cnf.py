@@ -127,7 +127,7 @@ class CNF(nn.Module):
         if reverse:
             integration_times = _flip(integration_times, 0)
 
-        self.odefunc._e = torch.randn(z.shape)
+        self.odefunc._e = torch.randn(z.shape).to(z.device)
         outputs = self.odeint(self.odefunc, inputs, integration_times.to(inputs), atol=1e-6, rtol=1e-5)
         z_t, logpz_t = outputs[:, :, :-1], outputs[:, :, -1:]
 
