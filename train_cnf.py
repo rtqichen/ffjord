@@ -64,7 +64,7 @@ def update_lr(optimizer, itr):
 
 def get_dataset(args):
     if args.data == "mnist":
-        trans = tforms.Compose([tforms.ToTensor(), utils.Preprocess(), lambda x: x.view(28 ** 2)])
+        trans = tforms.Compose([tforms.ToTensor(), lambda x: x.view(28 ** 2)])
         train_set = dset.MNIST(root='./data', train=True, transform=trans, download=True)
         test_set = dset.MNIST(root='./data', train=False, transform=trans, download=True)
         # pp = utils.Preprocess(reverse=True)
@@ -87,23 +87,26 @@ def get_dataset(args):
     return train_loader, test_loader
 
 
-def get_loss(x):
-    # batch of zeros for delta logpdf
-    zero = torch.zeros(x.shape[0], 1).to(x)
+def get_loss(x, pp):
+    # add noise
+    x_noise = pp.add_noise(x)
+    # logit transform
+    x_noise_logit, pp_logdet = pp.forward(x_noise, logdet=True)
 
     # backward to get z (standard normal)
-    z, delta_logp = cnf(x, zero, reverse=True)
+    zero = torch.zeros(x.shape[0], 1).to(x)
+    z, delta_logp = cnf(x_noise_logit, zero, reverse=True)
 
-    # compute log q(z)
+    # compute log p(z)
     logpz = standard_normal_logprob(z).sum(1, keepdim=True)
 
     logpx = logpz - delta_logp
-    loss = -torch.mean(logpx)
+    loss = -torch.mean(logpx + pp_logdet)
     return loss
 
 
 if __name__ == '__main__':
-    post_process = utils.Preprocess(reverse=True)
+    pre_process = utils.Preprocess()
     # get deivce
     device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
     cvt = lambda x: x.type(torch.float32).to(device)
@@ -143,7 +146,7 @@ if __name__ == '__main__':
             x = cvt(x)
 
             # compute loss
-            loss = get_loss(x)
+            loss = get_loss(x, pre_process)
             loss.backward()
 
             optimizer.step()
@@ -170,7 +173,7 @@ if __name__ == '__main__':
                 losses = []
                 for (x, y) in test_loader:
                     x = cvt(x)
-                    loss = get_loss(x)
+                    loss = get_loss(x, pre_process)
                     losses.append(loss.item())
                 loss = np.mean(losses)
                 print("Epoch {:04d} | Time {:.4f}, Loss {:.6f}".format(epoch, time.time() - start, loss))
@@ -188,7 +191,7 @@ if __name__ == '__main__':
                 if args.data == "mnist":
                     samples = visualize_samples(
                         lambda n: torch.randn((n, 784)).type(torch.float32),
-                        cnf, device=device, post_process=post_process
+                        cnf, device=device, post_process=pre_process.backward
                     )
                     fig_filename = os.path.join(args.save, "figs", "epoch_{}.jpg".format(epoch))
                     utils.makedirs(os.path.dirname(fig_filename))

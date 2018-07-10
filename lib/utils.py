@@ -2,6 +2,7 @@ import os
 import logging
 import torch
 import torch.functional as F
+import numpy as np
 
 
 def makedirs(dirname):
@@ -23,30 +24,27 @@ class Preprocess(object):
         self.reverse = reverse
         self.alpha = alpha
 
-    def __call__(self, tensor, alpha=.05):
-        """
-        Args:
-            tensor (Tensor): Tensor of floats in range [0., 1.]
-
-        Returns:
-            Tensor: Tensor with specified bit-rate
-        """
-        if self.reverse:
-            return self.backward(tensor)
-        else:
-            return self.forward(tensor)
-
-    def forward(self, x):
-        x = self._add_noise(x)
+    def forward(self, x, logdet=False):
         s = self.alpha + (1 - 2 * self.alpha) * x
         y = torch.log(s) - torch.log(1 - s)
-        return y
+        if logdet:
+            return y, -self._logdetgrad(x).view(x.size(0), -1).sum(1, keepdim=True)
+        else:
+            return y
 
-    def backward(self, y):
+    def backward(self, y, logdet=False):
         x = (torch.sigmoid(y) - self.alpha) / (1 - 2 * self.alpha)
-        return x
+        if logdet:
+            return x, self._logdetgrad(x).view(x.size(0), -1).sum(1, keepdim=True)
+        else:
+            return x
 
-    def _add_noise(self, x):
+    def _logdetgrad(self, x):
+        s = self.alpha + (1 - 2 * self.alpha) * x
+        logdetgrad = -torch.log(s - s * s) + np.log(1 - 2 * self.alpha)
+        return logdetgrad
+
+    def add_noise(self, x):
         noise = x.new().resize_as_(x).uniform_()
         x = x * 255 + noise
         x = x / 256

@@ -46,6 +46,36 @@ class ConcatLinear(nn.Module):
         return self._layer(ttx)
 
 
+class IgnoreConv2d(nn.Module):
+    def __init__(self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, **kwargs):
+        super(IgnoreLinear, self).__init__()
+        self._layer = nn.Conv2d(
+            dim_in, dim_out,
+            kernel_size=ksize, stride=stride,
+            padding=padding, dilation=dilation,
+            groups=groups, bias=bias
+        )
+
+    def forward(self, t, x):
+        return self._layer(x)
+
+
+class ConcatConv2d(nn.Module):
+    def __init__(self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, **kwargs):
+        super(ConcatLinear, self).__init__()
+        self._layer = nn.Conv2d(
+            dim_in, dim_out,
+            kernel_size=ksize, stride=stride,
+            padding=padding, dilation=dilation,
+            groups=groups, bias=bias
+        )
+
+    def forward(self, t, x):
+        tt = torch.ones_like(x[:, :1, :, :]) * t
+        ttx = torch.cat([tt, x], 1)
+        return self._layer(ttx)
+
+
 def divergence_bf(dx, y, **kwargs):
     sum_diag = 0.
     for i in range(y.shape[1]):
