@@ -29,6 +29,7 @@ parser.add_argument('--data',
 parser.add_argument('--dims', type=str, default='64,64,10')
 parser.add_argument('--layer_type', type=str, default="ignore")
 parser.add_argument('--divergence_fn', type=str, default="approximate")
+parser.add_argument('--nonlinearity', type=str, default="tanh")
 parser.add_argument('--time_length', type=float, default=1.0)
 parser.add_argument('--num_bits', type=int, default=5)
 
@@ -64,7 +65,6 @@ def update_lr(optimizer, itr):
 def get_dataset(args):
     if args.data == "mnist":
         trans = tforms.Compose([tforms.ToTensor(), utils.Preprocess(), lambda x: x.view(28 ** 2)])
-        #trans = tforms.Compose([tforms.ToTensor(), lambda x: x.view(28 ** 2)])
         train_set = dset.MNIST(root='./data', train=True, transform=trans, download=True)
         test_set = dset.MNIST(root='./data', train=False, transform=trans, download=True)
         # pp = utils.Preprocess(reverse=True)
@@ -118,7 +118,7 @@ if __name__ == '__main__':
     cnf = models.CNF(
         dims=dims, T=args.time_length,
         odeint=_odeint, layer_type=args.layer_type,
-        divergence_fn=args.divergence_fn
+        divergence_fn=args.divergence_fn, nonlinearity=args.nonlinearity
     )
 
     if args.resume is not None:
@@ -130,6 +130,8 @@ if __name__ == '__main__':
 
     time_meter = utils.RunningAverageMeter(0.97)
     loss_meter = utils.RunningAverageMeter(0.97)
+    steps_meter = utils.RunningAverageMeter(0.97)
+
     best_loss = float('inf')
     itr = 0
     for epoch in range(1, args.num_epochs + 1):
@@ -148,10 +150,14 @@ if __name__ == '__main__':
 
             time_meter.update(time.time() - start)
             loss_meter.update(loss.item())
+            steps_meter.update(cnf.num_evals())
 
             if itr % args.log_freq == 0:
-                print('Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f})'.format(
-                    itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg)
+                print('Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | Steps {:.6f}({:.6f})'.format(
+                    itr,
+                    time_meter.val, time_meter.avg,
+                    loss_meter.val, loss_meter.avg,
+                    steps_meter.val, steps_meter.avg)
                 )
 
             itr += 1

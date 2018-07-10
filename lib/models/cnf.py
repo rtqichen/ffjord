@@ -63,12 +63,13 @@ def divergence_approx(z, x, e=None):
 
 
 class ODEfunc(nn.Module):
-    def __init__(self, dims, layer_type="concat", layer_kwargs={}, nonlinearity=F.tanh, divergence_fn="approximate"):
+    def __init__(self, dims, layer_type="concat", layer_kwargs={}, nonlinearity="tanh", divergence_fn="approximate"):
         super(ODEfunc, self).__init__()
         assert layer_type in ("ignore", "hyper", "concat")
         assert divergence_fn in ("brute_force", "approximate")
+        assert nonlinearity in ("tanh", "relu", "softplus", "elu")
         assert len(dims) >= 2
-        self.nonlinearity = nonlinearity
+        self.nonlinearity = {"tanh": F.tanh, "relu": F.relu, "softplus": F.softplus, "elu": F.elu}[nonlinearity]
         base_layer = {"ignore": IgnoreLinear, "hyper": HyperLinear, "concat": ConcatLinear}[layer_type]
         # build layers and add them
         self.layers = []
@@ -85,7 +86,12 @@ class ODEfunc(nn.Module):
         elif divergence_fn == "approximate":
             self.divergence_fn = divergence_approx
 
+        self._num_evals = 0
+
     def forward(self, t, y):
+        # increiment num evals
+        self._num_evals += 1
+
         # to tensor
         t = torch.tensor(t).type_as(y)
         y = y[:, :-1]  # remove logp
@@ -108,13 +114,14 @@ class ODEfunc(nn.Module):
 
 class CNF(nn.Module):
 
-    def __init__(self, dims, T, odeint, layer_type="concat", divergence_fn="approximate"):
+    def __init__(self, dims, T, odeint, layer_type="concat", divergence_fn="approximate", nonlinearity="tanh"):
         super(CNF, self).__init__()
-        self.odefunc = ODEfunc(dims, layer_type=layer_type, divergence_fn=divergence_fn)
+        self.odefunc = ODEfunc(dims, layer_type=layer_type, divergence_fn=divergence_fn, nonlinearity=nonlinearity)
         self.time_range = torch.tensor([0., float(T)])
         self.odeint = odeint
+        self._num_evals = 0
 
-    def forward(self, z, logpz=None, integration_times=None, reverse=False):
+    def forward(self, z, logpz=None, integration_times=None, reverse=False, full_output=False):
         if logpz is None:
             _logpz = torch.zeros(z.shape[0], 1).to(z)
         else:
@@ -127,7 +134,9 @@ class CNF(nn.Module):
         if reverse:
             integration_times = _flip(integration_times, 0)
 
+        # pass in noise and reset counter to 0
         self.odefunc._e = torch.randn(z.shape).to(z.device)
+        self.odefunc._num_evals = 0
         outputs = self.odeint(self.odefunc, inputs, integration_times.to(inputs), atol=1e-6, rtol=1e-5)
         z_t, logpz_t = outputs[:, :, :-1], outputs[:, :, -1:]
 
@@ -138,6 +147,9 @@ class CNF(nn.Module):
             return z_t, logpz_t
         else:
             return z_t
+
+    def num_evals(self):
+        return self.odefunc._num_evals
 
 
 def _flip(x, dim):
