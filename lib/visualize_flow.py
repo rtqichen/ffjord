@@ -98,8 +98,8 @@ def visualize_transform(potential_or_samples, prior_sample, prior_density, trans
     else:
         plt_potential_func(potential_or_samples, ax)
 
-    #ax = plt.subplot(1, 3, 2, aspect="equal")
-    #plt_flow(prior_density, transform, ax, device=device)
+    ax = plt.subplot(1, 3, 2, aspect="equal")
+    plt_flow(prior_density, transform, ax, device=device)
 
     ax = plt.subplot(1, 3, 3, aspect="equal")
     plt_flow_samples(prior_sample, transform, ax, device=device)

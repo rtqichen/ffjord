@@ -157,7 +157,7 @@ class CNF(nn.Module):
         if reverse:
             integration_times = _flip(integration_times, 0)
 
-        # pass in noise and reset counter to 0
+        # fix noise throughout integration and reset counter to 0
         self.odefunc._e = torch.randn(z.shape).to(z.device)
         self.odefunc._num_evals = 0
         outputs = self.odeint(self.odefunc, inputs, integration_times.to(inputs), atol=1e-6, rtol=1e-5)
