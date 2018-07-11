@@ -1,17 +1,18 @@
+import copy
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 
 __all__ = ["CNF"]
 
 
 class HyperLinear(nn.Module):
-    def __init__(self, dim_in, dim_out, hypernet_dim=64, activation=nn.Tanh):
+    def __init__(self, input_shape, dim_out, hypernet_dim=64, activation=nn.Tanh, **unused_kwargs):
         super(HyperLinear, self).__init__()
-        self.dim_in = dim_in
+        self.dim_in = input_shape[0]
         self.dim_out = dim_out
-        self.params_dim = dim_in * dim_out + dim_out
+        self.params_dim = self.dim_in * self.dim_out + self.dim_out
         self._hypernet = nn.Sequential(
             nn.Linear(1, hypernet_dim), activation(), nn.Linear(hypernet_dim, self.params_dim)
         )
@@ -25,18 +26,18 @@ class HyperLinear(nn.Module):
 
 
 class IgnoreLinear(nn.Module):
-    def __init__(self, dim_in, dim_out, **kwargs):
+    def __init__(self, input_shape, dim_out, **unused_kwargs):
         super(IgnoreLinear, self).__init__()
-        self._layer = nn.Linear(dim_in, dim_out)
+        self._layer = nn.Linear(input_shape[0], dim_out)
 
     def forward(self, t, x):
         return self._layer(x)
 
 
 class ConcatLinear(nn.Module):
-    def __init__(self, dim_in, dim_out, **kwargs):
+    def __init__(self, input_shape, dim_out, **unused_kwargs):
         super(ConcatLinear, self).__init__()
-        self._layer = nn.Linear(dim_in + 1, dim_out)
+        self._layer = nn.Linear(input_shape[0] + 1, dim_out)
 
     def forward(self, t, x):
         tt = torch.ones_like(x[:, :1]) * t
@@ -44,33 +45,100 @@ class ConcatLinear(nn.Module):
         return self._layer(ttx)
 
 
+class HyperConv2d(nn.Module):
+    def __init__(
+        self, input_shape, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False,
+        **unused_kwargs
+    ):
+        super(HyperConv2d, self).__init__()
+        assert len(input_shape) == 3, "input_shape expected to be of (C, H, W)."
+        dim_in = input_shape[0]
+        assert dim_in % groups == 0 and dim_out % groups == 0, "dim_in and dim_out must both be divisible by groups."
+        self.dim_in = dim_in
+        self.dim_out = dim_out
+        self.ksize = ksize
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
+        self.bias = bias
+        self.transpose = transpose
+
+        self.params_dim = int(dim_in * dim_out * ksize * ksize / groups)
+        if self.bias:
+            self.params_dim += dim_out
+        self._hypernet = nn.Linear(1, self.params_dim)
+        self.conv_fn = F.conv_transpose2d if transpose else F.conv2d
+        self.input_shape = input_shape
+
+        def weights_init(m):
+            classname = m.__class__.__name__
+            if classname.find('Linear') != -1:
+                m.weight.data.normal_(0.0, 0.001)
+
+        self._hypernet.apply(weights_init)
+
+    def forward(self, t, x):
+        params = self._hypernet(t.view(1, 1)).view(-1)
+        weight_size = int(self.dim_in * self.dim_out * self.ksize * self.ksize / self.groups)
+        if self.transpose:
+            weight = params[:weight_size].view(self.dim_in, self.dim_out // self.groups, self.ksize, self.ksize)
+        else:
+            weight = params[:weight_size].view(self.dim_out, self.dim_in // self.groups, self.ksize, self.ksize)
+        bias = params[:self.dim_out].view(self.dim_out) if self.bias else None
+        batchsize = x.shape[0]
+        x = x.view(batchsize, *self.input_shape)
+        x = self.conv_fn(
+            x, weight=weight, bias=bias, stride=self.stride, padding=self.padding, groups=self.groups,
+            dilation=self.dilation
+        )
+        return x.view(batchsize, -1)
+
+
 class IgnoreConv2d(nn.Module):
-    def __init__(self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, **kwargs):
-        super(IgnoreLinear, self).__init__()
-        self._layer = nn.Conv2d(
+    def __init__(
+        self, input_shape, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False,
+        **unused_kwargs
+    ):
+        super(IgnoreConv2d, self).__init__()
+        assert len(input_shape) == 3, "input_shape expected to be of (C, H, W)."
+        dim_in = input_shape[0]
+        module = nn.ConvTranspose2d if transpose else nn.Conv2d
+        self._layer = module(
             dim_in, dim_out, kernel_size=ksize, stride=stride, padding=padding, dilation=dilation, groups=groups,
             bias=bias
         )
+        self.input_shape = input_shape
 
     def forward(self, t, x):
-        return self._layer(x)
+        batchsize = x.shape[0]
+        return self._layer(x.view(batchsize, *self.input_shape)).view(batchsize, -1)
 
 
 class ConcatConv2d(nn.Module):
-    def __init__(self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, **kwargs):
-        super(ConcatLinear, self).__init__()
-        self._layer = nn.Conv2d(
-            dim_in, dim_out, kernel_size=ksize, stride=stride, padding=padding, dilation=dilation, groups=groups,
+    def __init__(
+        self, input_shape, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False,
+        **unused_kwargs
+    ):
+        super(ConcatConv2d, self).__init__()
+        assert len(input_shape) == 3, "input_shape expected to be of (C, H, W)."
+        dim_in = input_shape[0]
+        module = nn.ConvTranspose2d if transpose else nn.Conv2d
+        self._layer = module(
+            dim_in + 1, dim_out, kernel_size=ksize, stride=stride, padding=padding, dilation=dilation, groups=groups,
             bias=bias
         )
+        self.input_shape = input_shape
 
     def forward(self, t, x):
+        batchsize = x.shape[0]
+        x = x.view(batchsize, *self.input_shape)
         tt = torch.ones_like(x[:, :1, :, :]) * t
         ttx = torch.cat([tt, x], 1)
-        return self._layer(ttx)
+        return self._layer(ttx).view(batchsize, -1)
 
 
-def divergence_bf(dx, y, **kwargs):
+def divergence_bf(dx, y, **unused_kwargs):
     sum_diag = 0.
     for i in range(y.shape[1]):
         sum_diag += torch.autograd.grad(dx[:, i].sum(), y, create_graph=True)[0].contiguous()[:, i].contiguous()
@@ -87,23 +155,51 @@ def divergence_approx(z, x, e=None):
 
 
 class ODEfunc(nn.Module):
-    def __init__(self, dims, layer_type="concat", layer_kwargs={}, nonlinearity="tanh", divergence_fn="approximate"):
+    def __init__(
+        self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="tanh",
+        divergence_fn="approximate"
+    ):
         super(ODEfunc, self).__init__()
         assert layer_type in ("ignore", "hyper", "concat")
         assert divergence_fn in ("brute_force", "approximate")
         assert nonlinearity in ("tanh", "relu", "softplus", "elu")
-        assert len(dims) >= 2
+
         self.nonlinearity = {"tanh": F.tanh, "relu": F.relu, "softplus": F.softplus, "elu": F.elu}[nonlinearity]
-        base_layer = {"ignore": IgnoreLinear, "hyper": HyperLinear, "concat": ConcatLinear}[layer_type]
+
+        if conv:
+            assert len(strides) == len(hidden_dims) + 1
+            base_layer = {"ignore": IgnoreConv2d, "hyper": HyperConv2d, "concat": ConcatConv2d}[layer_type]
+        else:
+            strides = [None] * (len(hidden_dims) + 1)
+            base_layer = {"ignore": IgnoreLinear, "hyper": HyperLinear, "concat": ConcatLinear}[layer_type]
+
         # build layers and add them
-        self.layers = []
-        for i in range(1, len(dims)):
-            dim_out = dims[i]
-            dim_in = dims[i - 1]
-            self.layers.append(base_layer(dim_in, dim_out, **layer_kwargs))
-        self.layers.append(base_layer(dims[-1], dims[0], **layer_kwargs))
-        for idx, layer in enumerate(self.layers):
-            self.add_module(str(idx), layer)
+        layers = []
+        hidden_shape = input_shape
+
+        for dim_out, stride in zip(hidden_dims + (input_shape[0],), strides):
+
+            if stride is None:
+                layer_kwargs = {}
+            elif stride == 1:
+                layer_kwargs = {"ksize": 3, "stride": 1, "padding": 1, "transpose": False}
+            elif stride == 2:
+                layer_kwargs = {"ksize": 4, "stride": 2, "padding": 1, "transpose": False}
+            elif stride == -2:
+                layer_kwargs = {"ksize": 4, "stride": 2, "padding": 1, "transpose": True}
+            else:
+                raise ValueError('Unsupported stride: {}'.format(stride))
+
+            layers.append(base_layer(hidden_shape, dim_out, **layer_kwargs))
+
+            hidden_shape = list(copy.copy(hidden_shape))
+            hidden_shape[0] = dim_out
+            if stride == 2:
+                hidden_shape[1], hidden_shape[2] = hidden_shape[1] // 2, hidden_shape[2] // 2
+            elif stride == -2:
+                hidden_shape[1], hidden_shape[2] = hidden_shape[1] * 2, hidden_shape[2] * 2
+
+        self.layers = nn.ModuleList(layers)
 
         if divergence_fn == "brute_force":
             self.divergence_fn = divergence_bf
@@ -113,7 +209,7 @@ class ODEfunc(nn.Module):
         self._num_evals = 0
 
     def forward(self, t, y):
-        # increiment num evals
+        # increment num evals
         self._num_evals += 1
 
         # to tensor
@@ -129,7 +225,6 @@ class ODEfunc(nn.Module):
                 dx = layer(t, dx)
                 # if not last layer, use nonlinearity
                 if l < len(self.layers) - 1:
-
                     dx = self.nonlinearity(dx)
 
             divergence = self.divergence_fn(dx, y, e=self._e).view(batchsize, 1)
@@ -137,9 +232,16 @@ class ODEfunc(nn.Module):
 
 
 class CNF(nn.Module):
-    def __init__(self, dims, T, odeint, layer_type="concat", divergence_fn="approximate", nonlinearity="tanh"):
+    def __init__(
+        self, hidden_dims, T, odeint, input_shape, strides=None, conv=False, layer_type="concat",
+        divergence_fn="approximate", nonlinearity="tanh"
+    ):
         super(CNF, self).__init__()
-        self.odefunc = ODEfunc(dims, layer_type=layer_type, divergence_fn=divergence_fn, nonlinearity=nonlinearity)
+        self.odefunc = ODEfunc(
+            hidden_dims=hidden_dims, input_shape=input_shape, strides=strides, conv=conv, layer_type=layer_type,
+            divergence_fn=divergence_fn, nonlinearity=nonlinearity
+        )
+        self.input_shape = input_shape
         self.time_range = torch.tensor([0., float(T)])
         self.odeint = odeint
         self._num_evals = 0
@@ -150,7 +252,10 @@ class CNF(nn.Module):
         else:
             _logpz = logpz
 
-        inputs = torch.cat([z, _logpz.view(-1, 1)], 1)
+        assert z.shape[1] == np.prod(self.input_shape), "Input data shape {} different from input_shape {}.".format(
+            z.shape[1], self.input_shape
+        )
+        inputs = torch.cat([z.view(z.shape[0], -1), _logpz.view(-1, 1)], 1)
 
         if integration_times is None:
             integration_times = self.time_range
@@ -179,30 +284,3 @@ def _flip(x, dim):
     indices = [slice(None)] * x.dim()
     indices[dim] = torch.arange(x.size(dim) - 1, -1, -1, dtype=torch.long, device=x.device)
     return x[tuple(indices)]
-
-
-if __name__ == "__main__":
-
-    dim_in = 10
-    dim_h = 10
-    batch_size = 16
-
-    net = nn.Sequential(
-        nn.Linear(dim_in, dim_h), nn.Tanh(), nn.Linear(dim_h, dim_h), nn.Tanh(), nn.Linear(dim_h, dim_in)
-    )
-
-    x = torch.randn(batch_size, dim_in, requires_grad=True)
-    z = net(x)
-    div_bf = divergence_bf(z, x)
-    print(div_bf.mean())
-    n_samples = 100
-    da = 0.
-    ss = []
-    for i in range(n_samples):
-        div = divergence_approx(z, x)
-        da += div
-        ss.append(div.mean().detach().numpy())
-
-    da = da / n_samples
-    print(da.mean())
-    print(np.var(ss, axis=0))

@@ -25,7 +25,9 @@ parser = argparse.ArgumentParser("Continuous Normalizing Flow")
 parser.add_argument(
     "--data", choices=["swissroll", "8gaussians", "pinwheel", "circles", "moons", "mnist"], type=str, default="moons"
 )
-parser.add_argument("--dims", type=str, default="64,64,10")
+parser.add_argument("--dims", type=str, default="128,64,64,128")
+parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
+parser.add_argument("--conv", type=eval, default=False, choices=[True, False])
 parser.add_argument("--layer_type", type=str, default="ignore", choices=["ignore", "concat", "hyper"])
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
@@ -76,20 +78,26 @@ def update_lr(optimizer, itr):
 
 def get_dataset(args):
     if args.data == "mnist":
-        trans = tforms.Compose([tforms.ToTensor(), add_noise, lambda x: x.view(784)])
+        trans = tforms.Compose([tforms.ToTensor(), add_noise, lambda x: x.view(-1)])
         train_set = dset.MNIST(root="./data", train=True, transform=trans, download=True)
         test_set = dset.MNIST(root="./data", train=False, transform=trans, download=True)
+        if args.conv:
+            data_shape = (1, 28, 28)
+        else:
+            data_shape = (784,)
     else:
+        args.conv = False  # conv not supported for 2D datasets.
         dataset = toy_data.inf_train_gen(args.data, batch_size=args.data_size)
         dataset = [(d, 0) for d in dataset]  # add dummy labels
         num_train = int(args.data_size * .9)
         train_set, test_set = dataset[:num_train], dataset[num_train:]
+        data_shape = (2,)
 
     train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
     print("==>>> total training batch number: {}".format(len(train_loader)))
     print("==>>> total testing batch number: {}".format(len(test_loader)))
-    return train_loader, test_loader
+    return train_loader, test_loader, data_shape
 
 
 def compute_bits_per_dim(x, model):
@@ -122,21 +130,23 @@ if __name__ == "__main__":
     cvt = lambda x: x.type(torch.float32).to(device)
 
     # load dataset
-    train_loader, test_loader = get_dataset(args)
+    train_loader, test_loader, data_shape = get_dataset(args)
 
     _odeint = integrate.odeint_adjoint if args.adjoint else integrate.odeint
-    dims = list(map(int, args.dims.split(",")))
-    dims = tuple([784] + dims) if args.data == "mnist" else tuple([2] + dims)
+    hidden_dims = tuple(map(int, args.dims.split(",")))
+    strides = tuple(map(int, args.strides.split(",")))
 
     # build model
     cnf = layers.CNF(
-        dims=dims, T=args.time_length, odeint=_odeint, layer_type=args.layer_type, divergence_fn=args.divergence_fn,
-        nonlinearity=args.nonlinearity
+        hidden_dims=hidden_dims, T=args.time_length, odeint=_odeint, input_shape=data_shape, strides=strides,
+        conv=args.conv, layer_type=args.layer_type, divergence_fn=args.divergence_fn, nonlinearity=args.nonlinearity
     )
     model = layers.SequentialFlow([
         cnf,
         layers.LogitTransform(alpha=args.alpha),
     ])
+
+    print(model)
 
     # optimizer
     optimizer = optim.Adam(model.parameters(), lr=args.lr_max, weight_decay=args.weight_decay)
