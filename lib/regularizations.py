@@ -7,15 +7,13 @@ class _RegularizationWrapper(nn.Module):
     def __init__(self, odefunc):
         super(_RegularizationWrapper, self).__init__()
         self.odefunc = odefunc
+        self.reset()
 
     def reset(self):
         self.regularization_loss = 0.
 
     def forward(self, t, y):
         return self.odefunc(t, y)
-
-    def regularization_loss(self):
-        return self.regularization_loss
 
     @property
     def _e(self):
@@ -37,14 +35,16 @@ class _RegularizationWrapper(nn.Module):
 class L2Regularization(_RegularizationWrapper):
     def forward(self, t, y):
         dy = self.odefunc(t, y)
-        self.regularization_loss += torch.mean(dy[1]**2)
+        self.regularization_loss += torch.mean(dy**2)
+        return dy
 
 
 class DirectionalL2Regularization(_RegularizationWrapper):
     def forward(self, t, y):
         dy = self.odefunc(t, y)
         directional_dy = torch.autograd.grad(dy, y, dy, create_graph=True)
-        self.regularization_loss += torch.mean(directional_dy[1]**2)
+        self.regularization_loss += torch.mean(directional_dy**2)
+        return dy
 
 
 class RegularizationsContainer(_RegularizationWrapper):
@@ -55,7 +55,7 @@ class RegularizationsContainer(_RegularizationWrapper):
             dict_of_regularizations: A dictionary of `_RegularizationWrapper` classes
                 as keys and coefficients as values.
         """
-        super(RegularizationsContainer, self).__init__()
+        super(RegularizationsContainer, self).__init__(odefunc)
         self.regularizations = collections.OrderedDict(dict_of_regularizations)
         self.wrapped_odefunc = odefunc
         for reg_wrapper in reversed(self.regularizations.keys()):

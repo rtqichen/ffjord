@@ -126,7 +126,10 @@ def compute_bits_per_dim(x, model):
     logpx_per_dim = torch.mean(logpx) / (x.nelement() / x.shape[0])  # averaged over batches
     bits_per_dim = -(logpx_per_dim - np.log(256)) / np.log(2)
 
-    return bits_per_dim, torch.mean(logpx_logit)
+    reg_loss = get_regularization(model)
+    loss = bits_per_dim + reg_loss
+
+    return loss, bits_per_dim, torch.mean(logpx_logit)
 
 
 def regularized_model(model):
@@ -145,8 +148,9 @@ def regularized_model(model):
 def get_regularization(model):
     reg_loss = 0
     for layer in model.chain:
-        if isinstance(layer, layers.CNF):
+        if isinstance(layer, layers.CNF) and hasattr(layer.odefunc, "regularization_loss"):
             reg_loss += layer.odefunc.regularization_loss
+            layer.odefunc.reset()
     return reg_loss
 
 
@@ -197,6 +201,7 @@ if __name__ == "__main__":
     if args.logit:
         chain.append(layers.LogitTransform(alpha=args.alpha))
     model = layers.SequentialFlow(chain)
+    model = regularized_model(model)
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
@@ -223,6 +228,7 @@ if __name__ == "__main__":
 
     time_meter = utils.RunningAverageMeter(0.97)
     loss_meter = utils.RunningAverageMeter(0.97)
+    bpd_meter = utils.RunningAverageMeter(0.97)
     logp_logit_meter = utils.RunningAverageMeter(0.97)
     steps_meter = utils.RunningAverageMeter(0.97)
 
@@ -238,22 +244,23 @@ if __name__ == "__main__":
             x = cvt(x)
 
             # compute loss
-            bits_per_dim, logit_loss = compute_bits_per_dim(x, model)
-            bits_per_dim.backward()
+            loss, bits_per_dim, logit_loss = compute_bits_per_dim(x, model)
+            loss.backward()
 
             optimizer.step()
 
             time_meter.update(time.time() - start)
-            loss_meter.update(bits_per_dim.item())
+            loss_meter.update(loss.item())
+            bpd_meter.update(bits_per_dim.item())
             logp_logit_meter.update(logit_loss.item())
             steps_meter.update(count_nfe(model))
 
             if itr % args.log_freq == 0:
                 logger.info(
-                    "Iter {:04d} | Time {:.4f}({:.4f}) | Bit/dim {:.4f}({:.4f}) | "
+                    "Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.4f}({:.4f}) | Bit/dim {:.4f}({:.4f}) | "
                     "Logit LogP {:.4f}({:.4f}) | Steps {:.0f}({:.2f})".format(
-                        itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, logp_logit_meter.val,
-                        logp_logit_meter.avg, steps_meter.val, steps_meter.avg
+                        itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, bpd_meter.val,
+                        bpd_meter.avg, logp_logit_meter.val, logp_logit_meter.avg, steps_meter.val, steps_meter.avg
                     )
                 )
 
