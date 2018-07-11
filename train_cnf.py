@@ -21,6 +21,9 @@ import lib.toy_data as toy_data
 import lib.utils as utils
 from lib.visualize_flow import visualize_transform
 
+# go fast boi!!
+torch.backends.cudnn.benchmark = True
+
 parser = argparse.ArgumentParser("Continuous Normalizing Flow")
 parser.add_argument(
     "--data", choices=["swissroll", "8gaussians", "pinwheel", "circles", "moons", "mnist"], type=str, default="moons"
@@ -28,8 +31,8 @@ parser.add_argument(
 parser.add_argument("--dims", type=str, default="128,64,64,128")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
 parser.add_argument("--conv", type=eval, default=False, choices=[True, False])
-parser.add_argument("--layer_type", type=str, default="ignore", choices=["ignore", "concat", "hyper"])
-parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
+parser.add_argument("--layer_type", type=str, default="ignore")
+parser.add_argument("--divergence_fn", type=str, default="approximate")
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
 parser.add_argument("--alpha", type=float, default=1e-6)
 parser.add_argument("--time_length", type=float, default=1.0)

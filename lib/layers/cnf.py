@@ -46,8 +46,9 @@ class ConcatLinear(nn.Module):
 
 
 class BlendLinear(nn.Module):
-    def __init__(self, dim_in, dim_out, **kwargs):
+    def __init__(self, input_shape, dim_out, **unused_kwargs):
         super(BlendLinear, self).__init__()
+        dim_in = input_shape[0]
         self._layer0 = nn.Linear(dim_in, dim_out)
         self._layer1 = nn.Linear(dim_in, dim_out)
 
@@ -151,6 +152,32 @@ class ConcatConv2d(nn.Module):
         return self._layer(ttx).view(batchsize, -1)
 
 
+class BlendConv2d(nn.Module):
+    def __init__(
+        self, input_shape, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False,
+        **unused_kwargs
+    ):
+        super(BlendConv2d, self).__init__()
+        assert len(input_shape) == 3, "input_shape expected to be of (C, H, W)."
+        dim_in = input_shape[0]
+        module = nn.ConvTranspose2d if transpose else nn.Conv2d
+        self._layer0 = module(
+            dim_in, dim_out, kernel_size=ksize, stride=stride, padding=padding, dilation=dilation, groups=groups,
+            bias=bias
+        )
+        self._layer1 = module(
+            dim_in, dim_out, kernel_size=ksize, stride=stride, padding=padding, dilation=dilation, groups=groups,
+            bias=bias
+        )
+        self.input_shape = input_shape
+
+    def forward(self, t, x):
+        batchsize = x.shape[0]
+        y0 = self._layer0(x.view(batchsize, *self.input_shape)).view(batchsize, -1)
+        y1 = self._layer1(x.view(batchsize, *self.input_shape)).view(batchsize, -1)
+        return y0 + (y1 - y0) * t
+
+
 def divergence_bf(dx, y, **unused_kwargs):
     sum_diag = 0.
     for i in range(y.shape[1]):
@@ -181,7 +208,8 @@ class ODEfunc(nn.Module):
 
         if conv:
             assert len(strides) == len(hidden_dims) + 1
-            base_layer = {"ignore": IgnoreConv2d, "hyper": HyperConv2d, "concat": ConcatConv2d}[layer_type]
+            base_layer = {"ignore": IgnoreConv2d, "hyper": HyperConv2d,
+                          "concat": ConcatConv2d, "blend": BlendConv2d}[layer_type]
         else:
             strides = [None] * (len(hidden_dims) + 1)
             base_layer = {"ignore": IgnoreLinear, "hyper": HyperLinear,
