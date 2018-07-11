@@ -13,9 +13,7 @@ class HyperLinear(nn.Module):
         self.dim_out = dim_out
         self.params_dim = dim_in * dim_out + dim_out
         self._hypernet = nn.Sequential(
-            nn.Linear(1, hypernet_dim),
-            activation(),
-            nn.Linear(hypernet_dim, self.params_dim)
+            nn.Linear(1, hypernet_dim), activation(), nn.Linear(hypernet_dim, self.params_dim)
         )
 
     def forward(self, t, x):
@@ -50,10 +48,8 @@ class IgnoreConv2d(nn.Module):
     def __init__(self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, **kwargs):
         super(IgnoreLinear, self).__init__()
         self._layer = nn.Conv2d(
-            dim_in, dim_out,
-            kernel_size=ksize, stride=stride,
-            padding=padding, dilation=dilation,
-            groups=groups, bias=bias
+            dim_in, dim_out, kernel_size=ksize, stride=stride, padding=padding, dilation=dilation, groups=groups,
+            bias=bias
         )
 
     def forward(self, t, x):
@@ -64,10 +60,8 @@ class ConcatConv2d(nn.Module):
     def __init__(self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, **kwargs):
         super(ConcatLinear, self).__init__()
         self._layer = nn.Conv2d(
-            dim_in, dim_out,
-            kernel_size=ksize, stride=stride,
-            padding=padding, dilation=dilation,
-            groups=groups, bias=bias
+            dim_in, dim_out, kernel_size=ksize, stride=stride, padding=padding, dilation=dilation, groups=groups,
+            bias=bias
         )
 
     def forward(self, t, x):
@@ -143,7 +137,6 @@ class ODEfunc(nn.Module):
 
 
 class CNF(nn.Module):
-
     def __init__(self, dims, T, odeint, layer_type="concat", divergence_fn="approximate", nonlinearity="tanh"):
         super(CNF, self).__init__()
         self.odefunc = ODEfunc(dims, layer_type=layer_type, divergence_fn=divergence_fn, nonlinearity=nonlinearity)
@@ -189,20 +182,14 @@ def _flip(x, dim):
 
 
 if __name__ == "__main__":
-    def divergence_bf(z, x):
-        nin = x.shape[1]
-        zs = z.sum(dim=0)
-        div = 0.
-        for i in range(nin):
-            dzidxi = torch.autograd.grad(zs[i], x, create_graph=True)[0][:, i]
-            div += dzidxi
-        return div.contiguous()
 
     dim_in = 10
     dim_h = 10
     batch_size = 16
 
-    net = nn.Sequential(nn.Linear(dim_in, dim_h), nn.Tanh(), nn.Linear(dim_h, dim_h), nn.Tanh(), nn.Linear(dim_h, dim_in))
+    net = nn.Sequential(
+        nn.Linear(dim_in, dim_h), nn.Tanh(), nn.Linear(dim_h, dim_h), nn.Tanh(), nn.Linear(dim_h, dim_in)
+    )
 
     x = torch.randn(batch_size, dim_in, requires_grad=True)
     z = net(x)

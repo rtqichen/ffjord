@@ -1,7 +1,6 @@
 import os
 import logging
 import torch
-import torch.functional as F
 import numpy as np
 
 

@@ -18,8 +18,9 @@ assert (__name__ == '__main__')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--checkpt', type=str, required=True)
-parser.add_argument('--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons'], type=str,
-                    default='moons')
+parser.add_argument(
+    '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons'], type=str, default='moons'
+)
 parser.add_argument('--dims', type=str, default='2,64,64,10')
 parser.add_argument('--time_length', type=float, default=1.0)
 
@@ -127,8 +128,9 @@ if __name__ == '__main__':
             dydt = dydt.reshape(K, K, 2)
 
             logmag = 2 * np.log(np.hypot(dydt[:, :, 0], dydt[:, :, 1]))
-            ax.quiver(x, y, dydt[:, :, 0], dydt[:, :, 1],
-                      np.exp(logmag), cmap='coolwarm', scale=10., width=0.015, pivot="mid")
+            ax.quiver(
+                x, y, dydt[:, :, 0], dydt[:, :, 1], np.exp(logmag), cmap='coolwarm', scale=10., width=0.015, pivot="mid"
+            )
             ax.set_xlim(-4, 4)
             ax.set_ylim(-4, 4)
             ax.axis('off')

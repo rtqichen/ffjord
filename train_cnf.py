@@ -23,16 +23,15 @@ import lib.utils as utils
 from lib.visualize_flow import visualize_transform, visualize_samples
 
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
-parser.add_argument('--data',
-                    choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons', 'mnist'],
-                    type=str, default='moons')
+parser.add_argument(
+    '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons', 'mnist'], type=str, default='moons'
+)
 parser.add_argument('--dims', type=str, default='64,64,10')
 parser.add_argument('--layer_type', type=str, default="ignore")
 parser.add_argument('--divergence_fn', type=str, default="approximate")
-parser.add_argument('--nonlinearity', type=str, default="tanh")
+parser.add_argument('--nonlinearity', type=str, default="softplus")
 parser.add_argument('--alpha', type=float, default=1e-6)
 parser.add_argument('--time_length', type=float, default=1.0)
-parser.add_argument('--num_bits', type=int, default=5)
 
 parser.add_argument('--num_epochs', type=int, default=1000)
 parser.add_argument('--data_size', type=int, default=10000)
@@ -45,7 +44,6 @@ parser.add_argument('--weight_decay', type=float, default=1e-6)
 parser.add_argument('--adjoint', action='store_true')
 parser.add_argument('--resume', type=str, default=None)
 parser.add_argument('--save', type=str, default='experiments/cnf')
-parser.add_argument('--viz_freq', type=int, default=1)
 parser.add_argument('--val_freq', type=int, default=1)
 parser.add_argument('--log_freq', type=int, default=10)
 parser.add_argument('--gpu', type=int, default=0)
@@ -65,7 +63,7 @@ def update_lr(optimizer, itr):
 
 def get_dataset(args):
     if args.data == "mnist":
-        trans = tforms.Compose([tforms.ToTensor(), lambda x: x.view(28 ** 2)])
+        trans = tforms.Compose([tforms.ToTensor(), lambda x: x.view(28**2)])
         train_set = dset.MNIST(root='./data', train=True, transform=trans, download=True)
         test_set = dset.MNIST(root='./data', train=False, transform=trans, download=True)
     else:
@@ -116,9 +114,8 @@ if __name__ == '__main__':
     dims = tuple([28**2] + dims) if args.data == "mnist" else tuple([2] + dims)
 
     cnf = models.CNF(
-        dims=dims, T=args.time_length,
-        odeint=_odeint, layer_type=args.layer_type,
-        divergence_fn=args.divergence_fn, nonlinearity=args.nonlinearity
+        dims=dims, T=args.time_length, odeint=_odeint, layer_type=args.layer_type, divergence_fn=args.divergence_fn,
+        nonlinearity=args.nonlinearity
     )
 
     if args.resume is not None:
@@ -153,11 +150,11 @@ if __name__ == '__main__':
             steps_meter.update(cnf.num_evals())
 
             if itr % args.log_freq == 0:
-                print('Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | Steps {:.6f}({:.6f})'.format(
-                    itr,
-                    time_meter.val, time_meter.avg,
-                    loss_meter.val, loss_meter.avg,
-                    steps_meter.val, steps_meter.avg)
+                print(
+                    'Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | Steps {:.6f}({:.6f})'.format(
+                        itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, steps_meter.val,
+                        steps_meter.avg
+                    )
                 )
 
             itr += 1
@@ -183,23 +180,19 @@ if __name__ == '__main__':
                     }, os.path.join(args.save, 'checkpt.pth'))
 
         # visualize samples and density
-        if True:  # epoch % args.viz_freq == 0:
-            with torch.no_grad():
-                if args.data == "mnist":
-                    samples = visualize_samples(
-                        lambda n: torch.randn((n, 784)).type(torch.float32),
-                        cnf, device=device, post_process=pre_process.backward
-                    )
-                    fig_filename = os.path.join(args.save, "figs", "epoch_{}.jpg".format(epoch))
-                    utils.makedirs(os.path.dirname(fig_filename))
-                    cv2.imwrite(fig_filename, (255 * samples))
-                else:
-                    p_samples = toy_data.inf_train_gen(args.data, batch_size=10000)
-                    plt.figure(figsize=(9, 3))
-                    visualize_transform(
-                        p_samples, torch.randn, standard_normal_logprob, cnf,
-                        samples=True, device=device
-                    )
-                    fig_filename = os.path.join(args.save, 'figs', '{:04d}.jpg'.format(epoch))
-                    utils.makedirs(os.path.dirname(fig_filename))
-                    plt.savefig(fig_filename)
+        with torch.no_grad():
+            if args.data == "mnist":
+                samples = visualize_samples(
+                    lambda n: torch.randn((n, 784)).type(torch.float32), cnf, device=device,
+                    post_process=pre_process.backward
+                )
+                fig_filename = os.path.join(args.save, "figs", "epoch_{}.jpg".format(epoch))
+                utils.makedirs(os.path.dirname(fig_filename))
+                cv2.imwrite(fig_filename, (255 * samples))
+            else:
+                p_samples = toy_data.inf_train_gen(args.data, batch_size=10000)
+                plt.figure(figsize=(9, 3))
+                visualize_transform(p_samples, torch.randn, standard_normal_logprob, cnf, samples=True, device=device)
+                fig_filename = os.path.join(args.save, 'figs', '{:04d}.jpg'.format(epoch))
+                utils.makedirs(os.path.dirname(fig_filename))
+                plt.savefig(fig_filename)
