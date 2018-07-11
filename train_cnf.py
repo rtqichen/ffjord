@@ -30,6 +30,7 @@ parser.add_argument('--dims', type=str, default='64,64,10')
 parser.add_argument('--layer_type', type=str, default="ignore")
 parser.add_argument('--divergence_fn', type=str, default="approximate")
 parser.add_argument('--nonlinearity', type=str, default="tanh")
+parser.add_argument('--alpha', type=float, default=1e-6)
 parser.add_argument('--time_length', type=float, default=1.0)
 parser.add_argument('--num_bits', type=int, default=5)
 
@@ -67,13 +68,6 @@ def get_dataset(args):
         trans = tforms.Compose([tforms.ToTensor(), lambda x: x.view(28 ** 2)])
         train_set = dset.MNIST(root='./data', train=True, transform=trans, download=True)
         test_set = dset.MNIST(root='./data', train=False, transform=trans, download=True)
-        # pp = utils.Preprocess(reverse=True)
-        # im = train_set[0][0]
-        # print(im, im.min(), im.max())
-        # impp = pp(im)
-        # print(impp, impp.min(), impp.max())
-        # import torch.functional as F
-        # 1/0
     else:
         dataset = toy_data.inf_train_gen(args.data, batch_size=args.data_size)
         dataset = [(d, 0) for d in dataset]  # add dummy labels
@@ -101,12 +95,15 @@ def get_loss(x, pp):
     logpz = standard_normal_logprob(z).sum(1, keepdim=True)
 
     logpx = logpz - delta_logp
-    loss = -torch.mean(logpx + pp_logdet)
+    # image space logp(x)
+    # loss = -torch.mean(logpx + pp_logdet)
+    # logit space logp(x)
+    loss = -torch.mean(logpx)
     return loss
 
 
 if __name__ == '__main__':
-    pre_process = utils.Preprocess()
+    pre_process = utils.Preprocess(args.alpha)
     # get deivce
     device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
     cvt = lambda x: x.type(torch.float32).to(device)
