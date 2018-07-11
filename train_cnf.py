@@ -155,12 +155,13 @@ if __name__ == "__main__":
     if args.resume is not None:
         checkpt = torch.load(args.resume)
         model.load_state_dict(checkpt["state_dict"])
-        optimizer.load_state_dict(checkpt["optim_state_dict"])
-        # Manually move optimizer state to device.
-        for state in optimizer.state.values():
-            for k, v in state.items():
-                if torch.is_tensor(v):
-                    state[k] = cvt(v)
+        if "optim_state_dict" in checkpt.keys():
+            optimizer.load_state_dict(checkpt["optim_state_dict"])
+            # Manually move optimizer state to device.
+            for state in optimizer.state.values():
+                for k, v in state.items():
+                    if torch.is_tensor(v):
+                        state[k] = cvt(v)
 
     model.to(device)
 
