@@ -29,7 +29,7 @@ parser.add_argument(
 parser.add_argument("--dims", type=str, default="8,32,32,8")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
 parser.add_argument("--conv", type=eval, default=False, choices=[True, False])
-parser.add_argument("--layer_type", type=str, default="ignore", choices=["ignore", "concat", "hyper"])
+parser.add_argument("--layer_type", type=str, default="ignore", choices=["ignore", "concat", "hyper", "blend"])
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
 parser.add_argument("--alpha", type=float, default=1e-6)
@@ -149,6 +149,10 @@ def count_nfe(model):
     return num_evals
 
 
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
 if __name__ == "__main__":
 
     # get deivce
@@ -181,6 +185,7 @@ if __name__ == "__main__":
     model = layers.SequentialFlow(chain)
 
     print(model)
+    print("Number of trainable parameters: {}".format(count_parameters(model)))
 
     # optimizer
     optimizer = optim.Adam(model.parameters(), lr=args.lr_max, weight_decay=args.weight_decay)
