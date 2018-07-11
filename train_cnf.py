@@ -221,7 +221,7 @@ if __name__ == "__main__":
                 loss = np.mean(losses)
                 logit_loss = np.mean(logit_losses)
                 print(
-                    "Epoch {:04d} | Time {:.4f}, Bit/dim {:.4f}, Logit Loss {:.4f}".
+                    "Epoch {:04d} | Time {:.4f}, Bit/dim {:.4f}, Logit LogP {:.4f}".
                     format(epoch, time.time() - start, loss, logit_loss)
                 )
                 if loss < best_loss:
