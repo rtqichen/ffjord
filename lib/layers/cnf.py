@@ -207,6 +207,7 @@ class ODEfunc(nn.Module):
         elif divergence_fn == "approximate":
             self.divergence_fn = divergence_approx
 
+        self._e = None
         self._num_evals = 0
 
     def forward(self, t, y):
