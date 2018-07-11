@@ -43,6 +43,7 @@ parser.add_argument("--weight_decay", type=float, default=1e-6)
 parser.add_argument("--adjoint", type=eval, default=True, choices=[True, False])
 parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
 
+parser.add_argument("--begin_epoch", type=int, default=1)
 parser.add_argument("--resume", type=str, default=None)
 parser.add_argument("--save", type=str, default="experiments/cnf")
 parser.add_argument("--val_freq", type=int, default=1)
@@ -93,21 +94,25 @@ def get_dataset(args):
 
 def compute_bits_per_dim(x, model):
 
-    # backward to get z (standard normal)
     zero = torch.zeros(x.shape[0], 1).to(x)
 
-    z, delta_logp = model(x, zero, reverse=True)
+    # preprocessing layer
+    logit_x, delta_logpx_logit_tranform = model.chain[-1](x, zero, reverse=True)
+
+    # the rest of the layers
+    z, delta_logp = model(logit_x, zero, reverse=True, inds=range(len(model.chain) - 2, -1, -1))
 
     # compute log p(z)
     logpz = standard_normal_logprob(z).sum(1, keepdim=True)
 
     # compute log p(x)
-    logpx = logpz - delta_logp
+    logpx_logit = logpz - delta_logp
+    logpx = logpx_logit - delta_logpx_logit_tranform
 
-    logpx_per_dim = torch.mean(logpx) / (x.nelement() / x.shape[0])
+    logpx_per_dim = torch.mean(logpx) / (x.nelement() / x.shape[0])  # averaged over batches
     bits_per_dim = -(logpx_per_dim - np.log(256)) / np.log(2)
 
-    return bits_per_dim  # averaged over batches
+    return bits_per_dim, torch.mean(logpx_logit)
 
 
 if __name__ == "__main__":
@@ -154,11 +159,12 @@ if __name__ == "__main__":
 
     time_meter = utils.RunningAverageMeter(0.97)
     loss_meter = utils.RunningAverageMeter(0.97)
+    logp_logit_meter = utils.RunningAverageMeter(0.97)
     steps_meter = utils.RunningAverageMeter(0.97)
 
     best_loss = float("inf")
-    itr = 0
-    for epoch in range(1, args.num_epochs + 1):
+    itr = (args.begin_epoch - 1) * len(train_loader)
+    for epoch in range(args.begin_epoch, args.num_epochs + 1):
         for _, (x, y) in enumerate(train_loader):
             update_lr(optimizer, itr)
             optimizer.zero_grad()
@@ -167,20 +173,22 @@ if __name__ == "__main__":
             x = cvt(x)
 
             # compute loss
-            loss = compute_bits_per_dim(x, model)
-            loss.backward()
+            bits_per_dim, logit_loss = compute_bits_per_dim(x, model)
+            bits_per_dim.backward()
 
             optimizer.step()
 
             time_meter.update(time.time() - start)
-            loss_meter.update(loss.item())
+            loss_meter.update(bits_per_dim.item())
+            logp_logit_meter.update(logit_loss.item())
             steps_meter.update(cnf.num_evals())
 
             if itr % args.log_freq == 0:
                 print(
-                    "Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | Steps {:.6f}({:.6f})".format(
-                        itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, steps_meter.val,
-                        steps_meter.avg
+                    "Iter {:04d} | Time {:.4f}({:.4f}) | Bit/dim {:.4f}({:.4f}) | "
+                    "Logit LogP {:.4f}({:.4f}) | Steps {:.0f}({:.2f})".format(
+                        itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, logp_logit_meter.val,
+                        logp_logit_meter.avg, steps_meter.val, steps_meter.avg
                     )
                 )
 
