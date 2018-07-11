@@ -10,12 +10,12 @@ __all__ = ["CNF"]
 def weights_init(m):
     classname = m.__class__.__name__
     if classname.find('Linear') != -1:
-        nn.init.constant_(m.weight, 0.001)
+        nn.init.constant_(m.weight, 0)
         nn.init.normal_(m.bias, 0, 0.01)
 
 
 class HyperLinear(nn.Module):
-    def __init__(self, input_shape, dim_out, hypernet_dim=500, n_hidden=0, activation=nn.Tanh, **unused_kwargs):
+    def __init__(self, input_shape, dim_out, hypernet_dim=8, n_hidden=1, activation=nn.Tanh, **unused_kwargs):
         super(HyperLinear, self).__init__()
         self.dim_in = input_shape[0]
         self.dim_out = dim_out

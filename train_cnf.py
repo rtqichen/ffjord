@@ -101,8 +101,8 @@ def get_dataset(args):
 
     train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
-    print("==>>> total training batch number: {}".format(len(train_loader)))
-    print("==>>> total testing batch number: {}".format(len(test_loader)))
+    logger.info("==>>> total training batch number: {}".format(len(train_loader)))
+    logger.info("==>>> total testing batch number: {}".format(len(test_loader)))
     return train_loader, test_loader, data_shape
 
 
@@ -138,7 +138,16 @@ def regularized_model(model):
 
     for layer in model.chain:
         if isinstance(layer, layers.CNF):
-            layer.odefunc
+            layer.odefunc = regularizations.RegularizationsContainer(layer.odefunc, dict_of_regularizations)
+    return model
+
+
+def get_regularization(model):
+    reg_loss = 0
+    for layer in model.chain:
+        if isinstance(layer, layers.CNF):
+            reg_loss += layer.odefunc.regularization_loss
+    return reg_loss
 
 
 def count_nfe(model):
@@ -154,6 +163,11 @@ def count_parameters(model):
 
 
 if __name__ == "__main__":
+
+    # logger
+    utils.makedirs(args.save)
+    logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
+    logger.info(args)
 
     # get deivce
     device = torch.device("cuda:" + str(args.gpu) if torch.cuda.is_available() else "cpu")
@@ -184,8 +198,8 @@ if __name__ == "__main__":
         chain.append(layers.LogitTransform(alpha=args.alpha))
     model = layers.SequentialFlow(chain)
 
-    print(model)
-    print("Number of trainable parameters: {}".format(count_parameters(model)))
+    logger.info(model)
+    logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
 
     # optimizer
     optimizer = optim.Adam(model.parameters(), lr=args.lr_max, weight_decay=args.weight_decay)
@@ -235,7 +249,7 @@ if __name__ == "__main__":
             steps_meter.update(count_nfe(model))
 
             if itr % args.log_freq == 0:
-                print(
+                logger.info(
                     "Iter {:04d} | Time {:.4f}({:.4f}) | Bit/dim {:.4f}({:.4f}) | "
                     "Logit LogP {:.4f}({:.4f}) | Steps {:.0f}({:.2f})".format(
                         itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, logp_logit_meter.val,
@@ -249,7 +263,7 @@ if __name__ == "__main__":
         if epoch % args.val_freq == 0:
             with torch.no_grad():
                 start = time.time()
-                print("validating...")
+                logger.info("validating...")
                 losses = []
                 logit_losses = []
                 for (x, y) in test_loader:
@@ -259,7 +273,7 @@ if __name__ == "__main__":
                     logit_losses.append(logit_loss.item())
                 loss = np.mean(losses)
                 logit_loss = np.mean(logit_losses)
-                print(
+                logger.info(
                     "Epoch {:04d} | Time {:.4f}, Bit/dim {:.4f}, Logit LogP {:.4f}".
                     format(epoch, time.time() - start, loss, logit_loss)
                 )
