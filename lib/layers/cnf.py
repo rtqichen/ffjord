@@ -45,6 +45,18 @@ class ConcatLinear(nn.Module):
         return self._layer(ttx)
 
 
+class BlendLinear(nn.Module):
+    def __init__(self, dim_in, dim_out, **kwargs):
+        super(BlendLinear, self).__init__()
+        self._layer0 = nn.Linear(dim_in, dim_out)
+        self._layer1 = nn.Linear(dim_in, dim_out)
+
+    def forward(self, t, x):
+        y0 = self._layer0(x)
+        y1 = self._layer1(x)
+        return y0 + (y1 - y0) * t
+
+
 class HyperConv2d(nn.Module):
     def __init__(
         self, input_shape, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False,
@@ -157,11 +169,11 @@ def divergence_approx(z, x, e=None):
 
 class ODEfunc(nn.Module):
     def __init__(
-        self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="tanh",
+        self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus",
         divergence_fn="approximate"
     ):
         super(ODEfunc, self).__init__()
-        assert layer_type in ("ignore", "hyper", "concat")
+        assert layer_type in ("ignore", "hyper", "concat", "blend")
         assert divergence_fn in ("brute_force", "approximate")
         assert nonlinearity in ("tanh", "relu", "softplus", "elu")
 
@@ -172,7 +184,8 @@ class ODEfunc(nn.Module):
             base_layer = {"ignore": IgnoreConv2d, "hyper": HyperConv2d, "concat": ConcatConv2d}[layer_type]
         else:
             strides = [None] * (len(hidden_dims) + 1)
-            base_layer = {"ignore": IgnoreLinear, "hyper": HyperLinear, "concat": ConcatLinear}[layer_type]
+            base_layer = {"ignore": IgnoreLinear, "hyper": HyperLinear,
+                          "concat": ConcatLinear, "blend": BlendLinear}[layer_type]
 
         # build layers and add them
         layers = []
