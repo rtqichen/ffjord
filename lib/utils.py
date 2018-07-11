@@ -1,57 +1,10 @@
 import os
 import logging
-import torch
-import torch.functional as F
-import numpy as np
 
 
 def makedirs(dirname):
     if not os.path.exists(dirname):
         os.makedirs(dirname)
-
-
-
-class Preprocess(object):
-    """
-    Preprocesses a tensor defined on compact input [0, 1.]
-    Adds uniform noise and scales back to [0., 1.)
-
-    Args:
-        num_bits (int): number of bits to use, min = 1, max = 8
-    """
-
-    def __init__(self, alpha=.05, reverse=False):
-        self.reverse = reverse
-        self.alpha = alpha
-
-    def forward(self, x, logdet=False):
-        s = self.alpha + (1 - 2 * self.alpha) * x
-        y = torch.log(s) - torch.log(1 - s)
-        if logdet:
-            return y, -self._logdetgrad(x).view(x.size(0), -1).sum(1, keepdim=True)
-        else:
-            return y
-
-    def backward(self, y, logdet=False):
-        x = (torch.sigmoid(y) - self.alpha) / (1 - 2 * self.alpha)
-        if logdet:
-            return x, self._logdetgrad(x).view(x.size(0), -1).sum(1, keepdim=True)
-        else:
-            return x
-
-    def _logdetgrad(self, x):
-        s = self.alpha + (1 - 2 * self.alpha) * x
-        logdetgrad = -torch.log(s - s * s) + np.log(1 - 2 * self.alpha)
-        return logdetgrad
-
-    def add_noise(self, x):
-        noise = x.new().resize_as_(x).uniform_()
-        x = x * 255 + noise
-        x = x / 256
-        return x
-
-    def __repr__(self):
-        return self.__class__.__name__ + '(backward={}, alpha={})'.format(self.reverse, self.alpha)
 
 
 def get_logger(logpath, filepath, package_files=[],
@@ -63,7 +16,7 @@ def get_logger(logpath, filepath, package_files=[],
         level = logging.INFO
     logger.setLevel(level)
     if saving:
-        info_file_handler = logging.FileHandler(logpath, mode='w')
+        info_file_handler = logging.FileHandler(logpath, mode="w")
         info_file_handler.setLevel(level)
         logger.addHandler(info_file_handler)
     if displaying:
@@ -71,12 +24,12 @@ def get_logger(logpath, filepath, package_files=[],
         console_handler.setLevel(level)
         logger.addHandler(console_handler)
     logger.info(filepath)
-    with open(filepath, 'r') as f:
+    with open(filepath, "r") as f:
         logger.info(f.read())
 
     for f in package_files:
         logger.info(f)
-        with open(f, 'r') as package_f:
+        with open(f, "r") as package_f:
             logger.info(package_f.read())
 
     return logger
