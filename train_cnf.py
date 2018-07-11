@@ -74,7 +74,7 @@ def get_dataset(args):
 
     train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
-    print("==>>> total trainning batch number: {}".format(len(train_loader)))
+    print("==>>> total training batch number: {}".format(len(train_loader)))
     print("==>>> total testing batch number: {}".format(len(test_loader)))
     return train_loader, test_loader
 
