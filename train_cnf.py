@@ -166,9 +166,10 @@ if __name__ == "__main__":
     itr = (args.begin_epoch - 1) * len(train_loader)
     for epoch in range(args.begin_epoch, args.num_epochs + 1):
         for _, (x, y) in enumerate(train_loader):
+            start = time.time()
             update_lr(optimizer, itr)
             optimizer.zero_grad()
-            start = time.time()
+
             # cast data and move to device
             x = cvt(x)
 
@@ -200,12 +201,18 @@ if __name__ == "__main__":
                 start = time.time()
                 print("validating...")
                 losses = []
+                logit_losses = []
                 for (x, y) in test_loader:
                     x = cvt(x)
-                    loss = compute_bits_per_dim(x, model)
-                    losses.append(loss.item())
+                    loss, logit_loss = compute_bits_per_dim(x, model)
+                    losses.append(loss)
+                    logit_losses.append(logit_loss.item())
                 loss = np.mean(losses)
-                print("Epoch {:04d} | Time {:.4f}, Loss {:.6f}".format(epoch, time.time() - start, loss))
+                logit_loss = np.mean(logit_losses)
+                print(
+                    "Epoch {:04d} | Time {:.4f}, Loss {:.4f}, Logit Loss {:.4f}".
+                    format(epoch, time.time() - start, loss, logit_loss)
+                )
                 if loss < best_loss:
                     best_loss = loss
                     utils.makedirs(args.save)
