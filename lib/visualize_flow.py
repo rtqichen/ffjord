@@ -8,7 +8,7 @@ LOW = -4
 HIGH = 4
 
 
-def plt_potential_func(potential, ax, low=LOW, high=HIGH, npts=200, title='$p(x)$'):
+def plt_potential_func(potential, ax, low=LOW, high=HIGH, npts=200, title="$p(x)$"):
     """
     Args:
         potential: computes U(z_k) given z_k
@@ -29,7 +29,7 @@ def plt_potential_func(potential, ax, low=LOW, high=HIGH, npts=200, title='$p(x)
     ax.set_title(title)
 
 
-def plt_flow(prior_logdensity, transform, ax, low=LOW, high=HIGH, npts=800, title='$q(x)$', device='cpu'):
+def plt_flow(prior_logdensity, transform, ax, low=LOW, high=HIGH, npts=800, title="$q(x)$", device="cpu"):
     """
     Args:
         transform: computes z_k and log(q_k) given z_0
@@ -59,7 +59,7 @@ def plt_flow(prior_logdensity, transform, ax, low=LOW, high=HIGH, npts=800, titl
     ax.set_title(title)
 
 
-def plt_flow_samples(prior_sample, transform, ax, title='$x ~ q(x)$', device='cpu'):
+def plt_flow_samples(prior_sample, transform, ax, title="$x ~ q(x)$", device="cpu"):
     z = prior_sample(10000, 2).type(torch.float32).to(device)
     zk = transform(z).cpu().numpy()
     ax.hist2d(zk[:, 0], zk[:, 1], range=[[LOW, HIGH], [-4, 4]], bins=200)
@@ -69,7 +69,7 @@ def plt_flow_samples(prior_sample, transform, ax, title='$x ~ q(x)$', device='cp
     ax.set_title(title)
 
 
-def plt_samples(samples, ax, title='$x ~ p(x)$'):
+def plt_samples(samples, ax, title="$x ~ p(x)$"):
     ax.hist2d(samples[:, 0], samples[:, 1], range=[[LOW, HIGH], [-4, 4]], bins=200)
     ax.invert_yaxis()
     ax.get_xaxis().set_ticks([])
@@ -77,7 +77,7 @@ def plt_samples(samples, ax, title='$x ~ p(x)$'):
     ax.set_title(title)
 
 
-def visualize_samples(prior_sample, transform, device='cpu', num_samples=100, post_process=lambda x: x):
+def visualize_samples(prior_sample, transform, device="cpu", num_samples=100, post_process=lambda x: x):
     z = prior_sample(num_samples).type(torch.float32).to(device)
     zk = transform(z)
     x = post_process(zk).cpu().numpy().reshape([-1, 28, 28, 1])
@@ -88,19 +88,19 @@ def visualize_samples(prior_sample, transform, device='cpu', num_samples=100, po
     return x
 
 
-def visualize_transform(potential_or_samples, prior_sample, prior_density, transform, samples=True, device='cpu'):
+def visualize_transform(potential_or_samples, prior_sample, prior_density, transform, samples=True, device="cpu"):
     """Produces visualization for the model density and samples from the model."""
     _t = time.time()
     plt.clf()
-    ax = plt.subplot(1, 3, 1, aspect='equal')
+    ax = plt.subplot(1, 3, 1, aspect="equal")
     if samples:
         plt_samples(potential_or_samples, ax)
     else:
         plt_potential_func(potential_or_samples, ax)
 
-    #ax = plt.subplot(1, 3, 2, aspect='equal')
+    #ax = plt.subplot(1, 3, 2, aspect="equal")
     #plt_flow(prior_density, transform, ax, device=device)
 
-    ax = plt.subplot(1, 3, 3, aspect='equal')
+    ax = plt.subplot(1, 3, 3, aspect="equal")
     plt_flow_samples(prior_sample, transform, ax, device=device)
     print("time for plt", time.time() - _t)

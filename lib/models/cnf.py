@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-__all__ = ['CNF']
+__all__ = ["CNF"]
 
 
 class HyperLinear(nn.Module):

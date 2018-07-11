@@ -1,5 +1,5 @@
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import argparse
@@ -14,22 +14,22 @@ import lib.models as models
 import lib.toy_data as toy_data
 import lib.utils as utils
 
-assert (__name__ == '__main__')
+assert (__name__ == "__main__")
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--checkpt', type=str, required=True)
+parser.add_argument("--checkpt", type=str, required=True)
 parser.add_argument(
-    '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons'], type=str, default='moons'
+    "--data", choices=["swissroll", "8gaussians", "pinwheel", "circles", "moons"], type=str, default="moons"
 )
-parser.add_argument('--dims', type=str, default='2,64,64,10')
-parser.add_argument('--time_length', type=float, default=1.0)
+parser.add_argument("--dims", type=str, default="2,64,64,10")
+parser.add_argument("--time_length", type=float, default=1.0)
 
-parser.add_argument('--ntimes', type=int, default=101)
-parser.add_argument('--save', type=str, default='trajectory')
-parser.add_argument('--gpu', type=int, default=0)
+parser.add_argument("--ntimes", type=int, default=101)
+parser.add_argument("--save", type=str, default="trajectory")
+parser.add_argument("--gpu", type=int, default=0)
 args = parser.parse_args()
 
-device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda:" + str(args.gpu) if torch.cuda.is_available() else "cpu")
 
 
 def standard_normal_logprob(z):
@@ -37,16 +37,16 @@ def standard_normal_logprob(z):
     return logZ - z.pow(2) / 2
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     checkpt = torch.load(args.checkpt)
-    ckpt_args = checkpt['args']
+    ckpt_args = checkpt["args"]
     args.dims = ckpt_args.dims
     args.time_length = ckpt_args.time_length
     args.data = ckpt_args.data
 
-    dims = tuple(map(int, args.dims.split(',')))
+    dims = tuple(map(int, args.dims.split(",")))
     cnf = models.CNF(dims=dims, T=args.time_length, odeint=integrate.odeint).to(device)
-    cnf.load_state_dict(checkpt['state_dict'])
+    cnf.load_state_dict(checkpt["state_dict"])
     cnf.to(device)
 
     integration_times = torch.linspace(0, args.time_length, args.ntimes)
@@ -78,16 +78,16 @@ if __name__ == '__main__':
             plt.clf()
 
             # plot target potential function
-            ax = plt.subplot(1, 4, 1, aspect='equal')
+            ax = plt.subplot(1, 4, 1, aspect="equal")
 
             ax.hist2d(data_samples[:, 0], data_samples[:, 1], range=[[-4, 4], [-4, 4]], bins=200)
             ax.invert_yaxis()
             ax.get_xaxis().set_ticks([])
             ax.get_yaxis().set_ticks([])
-            ax.set_title('Target', fontsize=32)
+            ax.set_title("Target", fontsize=32)
 
             # plot the density
-            ax = plt.subplot(1, 4, 2, aspect='equal')
+            ax = plt.subplot(1, 4, 2, aspect="equal")
 
             z, logqz = grid_z_traj[t], grid_logpz_traj[t]
 
@@ -103,20 +103,20 @@ if __name__ == '__main__':
             ax.invert_yaxis()
             ax.get_xaxis().set_ticks([])
             ax.get_yaxis().set_ticks([])
-            ax.set_title('Density', fontsize=32)
+            ax.set_title("Density", fontsize=32)
 
             # plot the samples
-            ax = plt.subplot(1, 4, 3, aspect='equal')
+            ax = plt.subplot(1, 4, 3, aspect="equal")
 
             zk = z_traj[t]
             ax.hist2d(zk[:, 0], zk[:, 1], range=[[-4, 4], [-4, 4]], bins=200)
             ax.invert_yaxis()
             ax.get_xaxis().set_ticks([])
             ax.get_yaxis().set_ticks([])
-            ax.set_title('Samples', fontsize=32)
+            ax.set_title("Samples", fontsize=32)
 
             # plot vector field
-            ax = plt.subplot(1, 4, 4, aspect='equal')
+            ax = plt.subplot(1, 4, 4, aspect="equal")
 
             K = 13j
             y, x = np.mgrid[-4:4:K, -4:4:K]
@@ -129,12 +129,12 @@ if __name__ == '__main__':
 
             logmag = 2 * np.log(np.hypot(dydt[:, :, 0], dydt[:, :, 1]))
             ax.quiver(
-                x, y, dydt[:, :, 0], dydt[:, :, 1], np.exp(logmag), cmap='coolwarm', scale=10., width=0.015, pivot="mid"
+                x, y, dydt[:, :, 0], dydt[:, :, 1], np.exp(logmag), cmap="coolwarm", scale=10., width=0.015, pivot="mid"
             )
             ax.set_xlim(-4, 4)
             ax.set_ylim(-4, 4)
-            ax.axis('off')
-            ax.set_title('Vector Field', fontsize=32)
+            ax.axis("off")
+            ax.set_title("Vector Field", fontsize=32)
 
             utils.makedirs(args.save)
-            plt.savefig(os.path.join(args.save, f'viz-{t:05d}.jpg'))
+            plt.savefig(os.path.join(args.save, f"viz-{t:05d}.jpg"))
