@@ -35,7 +35,8 @@ class ODEfunc(nn.Module):
         elif divergence_fn == "approximate":
             self.divergence_fn = divergence_approx
 
-        self._e = None
+    def before_odeint(self, e=None):
+        self._e = e
         self._num_evals = 0
 
     def forward(self, t, y):
@@ -64,8 +65,8 @@ class AutoencoderODEfunc(nn.Module):
         self.diffeq_encoder = diffeq_wrapper(diffeq_encoder)
         self.diffeq_decoder = diffeq_wrapper(diffeq_decoder)
 
-    def reset_state(self):
-        self._e = None
+    def before_odeint(self, e=None):
+        self._e = e
         self._num_evals = 0
 
     def forward(self, t, y):
