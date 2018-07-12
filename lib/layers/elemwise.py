@@ -11,15 +11,15 @@ class LogitTransform(nn.Module):
     x = logit(a + (1 - 2a)*y)
     """
 
-    def __init__(self, alpha=0.05):
+    def __init__(self, alpha=1e-6):
         nn.Module.__init__(self)
         self.alpha = alpha
 
     def forward(self, x, logpx=None, reverse=False):
         if reverse:
-            return self._logit(x, logpx)
-        else:
             return self._sigmoid(x, logpx)
+        else:
+            return self._logit(x, logpx)
 
     def _logit(self, x, logpx=None):
         s = self.alpha + (1 - 2 * self.alpha) * x
