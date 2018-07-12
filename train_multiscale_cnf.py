@@ -13,6 +13,7 @@ from lib.odenvp import ODENVP
 import lib.datasets as datasets
 import lib.priors as priors
 import lib.utils as utils
+import lib.layers as layers
 
 # Arguments
 parser = argparse.ArgumentParser(description='Process some integers.')
@@ -177,6 +178,14 @@ if use_cuda:
     fixed_z = [z.cuda() for z in fixed_z]
 
 
+def get_num_evals(model):
+    num_evals = 0
+    for m in model.modules():
+        if isinstance(m, layers.CNF):
+            num_evals += m.num_evals()
+    return num_evals
+
+
 def compute_bits_per_dim(x):
     # batch_size = x.size(0)
 
@@ -198,6 +207,7 @@ def compute_bits_per_dim(x):
 def train(epoch):
     batch_time = utils.AverageMeter()
     bpd_meter = utils.AverageMeter()
+    nfe_meter = utils.AverageMeter()
 
     model.train()
 
@@ -216,6 +226,7 @@ def train(epoch):
 
         # update running averages
         bpd_meter.update(loss.item(), x.size(0))
+        nfe_meter.update(get_num_evals(model))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -230,8 +241,9 @@ def train(epoch):
             logger.info(
                 'Epoch: [{0}][{1}/{2}]\t'
                 'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                'Bits/dim {bpd_meter.val:.4f} ({bpd_meter.avg:.4f})'.format(
-                    epoch, i, len(train_loader), batch_time=batch_time, bpd_meter=bpd_meter
+                'Bits/dim {bpd_meter.val:.4f} ({bpd_meter.avg:.4f})\t'
+                'NFE {nfe_meter.val:.0f} ({nfe_meter.avg:.3f})'.format(
+                    epoch, i, len(train_loader), batch_time=batch_time, bpd_meter=bpd_meter, nfe_meter=nfe_meter
                 )
             )
         if i % args.vis_freq == 0:
