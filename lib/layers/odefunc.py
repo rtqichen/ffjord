@@ -39,15 +39,15 @@ class ODEfunc(nn.Module):
         self._e = e
         self._num_evals = 0
 
-    def forward(self, t, y):
+    def forward(self, t, y_and_logpy):
+        y, _ = y_and_logpy  # remove logpy
+
         # increment num evals
         self._num_evals += 1
 
         # convert to tensor
         t = torch.tensor(t).type_as(y)
-        y = y[:, :-1]  # remove logp
         batchsize = y.shape[0]
-        y = y.view(batchsize, *self.input_shape)
 
         with torch.set_grad_enabled(True):
             y.requires_grad_(True)
@@ -55,7 +55,7 @@ class ODEfunc(nn.Module):
             dy = self.diffeq(t, y)
             divergence = self.divergence_fn(dy, y, e=self._e).view(batchsize, 1)
 
-        return torch.cat([dy.view(batchsize, -1), -divergence], 1)
+        return dy, -divergence
 
 
 class AutoencoderODEfunc(nn.Module):

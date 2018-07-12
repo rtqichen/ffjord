@@ -19,19 +19,14 @@ class CNF(nn.Module):
         else:
             _logpz = logpz
 
-        orig_shape = z.shape
-        inputs = torch.cat([z.view(z.shape[0], -1), _logpz.view(-1, 1)], 1)
-
         if integration_times is None:
             integration_times = self.time_range
         if reverse:
             integration_times = _flip(integration_times, 0)
 
-        # fix noise throughout integration.
+        # Fix noise throughout integration.
         self.odefunc.before_odeint(e=torch.randn(z.shape).to(z.device))
-        outputs = odeint(self.odefunc, inputs, integration_times.to(inputs), atol=1e-6, rtol=1e-5)
-        z_t, logpz_t = outputs[:, :, :-1], outputs[:, :, -1:]
-        z_t = z_t.view(-1, *orig_shape)
+        z_t, logpz_t = odeint(self.odefunc, (z, _logpz), integration_times.to(z), atol=1e-6, rtol=1e-5)
 
         if len(integration_times) == 2:
             z_t, logpz_t = z_t[1], logpz_t[1]
