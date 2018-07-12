@@ -17,6 +17,9 @@ class DiffEqWrapper(nn.Module):
         else:
             raise ValueError("Differential equation needs to either take (t, y) or (y,) as input.")
 
+    def __repr__(self):
+        return self.diffeq.__repr__()
+
 
 def diffeq_wrapper(layer):
     return DiffEqWrapper(layer)
@@ -33,6 +36,9 @@ class ReshapeDiffEq(nn.Module):
         batchsize = x.shape[0]
         x = x.view(batchsize, *self.input_shape)
         return self.net(t, x).view(batchsize, -1)
+
+    def __repr__(self):
+        return self.diffeq.__repr__()
 
 
 def reshape_wrapper(input_shape, layer):

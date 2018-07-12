@@ -22,8 +22,12 @@ class ConcatResNet(container.SequentialDiffEq):
 
         super(ConcatResNet, self).__init__(*layers)
 
-    def extra_repr(self):
-        return 'dim={}, idim={}, n_resblocks={}'.format(self.dim, self.intermediate_dim, self.n_resblocks)
+    def __repr__(self):
+        return (
+            '{name}({dim}, intermediate_dim={intermediate_dim}, n_resblocks={n_resblocks})'.format(
+                name=self.__class__.__name__, **self.__dict__
+            )
+        )
 
 
 class ConcatBasicBlock(nn.Module):
