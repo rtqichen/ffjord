@@ -5,17 +5,18 @@ __all__ = ["diffeq_wrapper", "reshape_wrapper"]
 
 
 class DiffEqWrapper(nn.Module):
-    def __init__(self, diffeq):
+    def __init__(self, module):
         super(DiffEqWrapper, self).__init__()
-        self.diffeq = diffeq
-
-    def forward(self, t, y):
-        if len(signature(self.diffeq.forward).parameters) == 1:
-            return self.diffeq(y)
-        elif len(signature(self.diffeq.forward).parameters) == 2:
-            return self.diffeq(t, y)
+        self.module = module
+        if len(signature(self.module.forward).parameters) == 1:
+            self.diffeq = lambda t, y: self.module(y)
+        elif len(signature(self.module.forward).parameters) == 2:
+            self.diffeq = self.module
         else:
             raise ValueError("Differential equation needs to either take (t, y) or (y,) as input.")
+
+    def forward(self, t, y):
+        return self.diffeq(t, y)
 
     def __repr__(self):
         return self.diffeq.__repr__()
