@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import lib.layers as layers
+import lib.layers.diffeq_layers as diffeq_layers
 
 
 class ODENVP(nn.Module):
@@ -110,17 +111,17 @@ class StackedCNFLayers(layers.SequentialFlow):
             chain.append(init_layer)
 
         def _make_odefunc(size):
-            return layers.ODEfunc(size, layers.IgnoreResNet(size[0], idim, n_resblocks=n_resblocks))
+            return layers.ODEfunc(size, diffeq_layers.ConcatResNet(size[0], idim, n_resblocks=n_resblocks))
 
         if squeeze:
             c, h, w = initial_size
             after_squeeze_size = c * 4, h // 2, w // 2
             chain += [
-                layers.CNF(_make_odefunc(initial_size), T=0.2),
+                layers.CNF(_make_odefunc(initial_size), T=0.3),
                 layers.SqueezeLayer(2),
-                layers.CNF(_make_odefunc(after_squeeze_size), T=0.2),
+                layers.CNF(_make_odefunc(after_squeeze_size), T=0.3),
             ]
         else:
-            chain += [layers.CNF(_make_odefunc(initial_size), T=0.2)]
+            chain += [layers.CNF(_make_odefunc(initial_size), T=0.3)]
 
         super(StackedCNFLayers, self).__init__(chain)

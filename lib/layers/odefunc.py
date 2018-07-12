@@ -1,46 +1,9 @@
-from inspect import signature
-
 import torch
 import torch.nn as nn
 
-__all__ = ["ODEfunc", "wrap_diffeq"]
+from .diffeq_layers import diffeq_wrapper
 
-
-class _WrapDiffEq(nn.Module):
-    def __init__(self, diffeq):
-        super(_WrapDiffEq, self).__init__()
-        self.diffeq = diffeq
-
-    def forward(self, t, y):
-        if len(signature(self.diffeq.forward).parameters) == 1:
-            return self.diffeq(y)
-        elif len(signature(self.diffeq.forward).parameters) == 2:
-            return self.diffeq(t, y)
-        else:
-            raise ValueError("Differential equation needs to either take (t, y) or (y,) as input.")
-
-
-def wrap_diffeq(diffeq):
-    return _WrapDiffEq(diffeq)
-
-
-class MixtureODELayer(nn.Module):
-    def __init__(self, experts):
-        super(MixtureODELayer, self).__init__()
-        assert len(experts) > 1
-        wrapped_experts = [wrap_diffeq(ex) for ex in experts]
-        self.experts = nn.ModuleList(wrapped_experts)
-        self.mixture_weights = nn.Linear(1, len(self.experts))
-
-    def forward(self, t, y):
-        dys = []
-        for f in self.experts:
-            dys.append(f(t, y))
-        dys = torch.stack(dys, 0)
-        weights = self.mixture_weights(t).view(-1, *([1] * (dys.ndimension() - 1)))
-
-        dy = torch.sum(dys * weights, dim=0, keepdim=False)
-        return dy
+__all__ = ["ODEfunc", "AutoencoderODEfunc"]
 
 
 def divergence_bf(dx, y, **unused_kwargs):
@@ -65,7 +28,7 @@ class ODEfunc(nn.Module):
         assert divergence_fn in ("brute_force", "approximate")
 
         self.input_shape = input_shape
-        self.diffeq = wrap_diffeq(diffeq)
+        self.diffeq = diffeq_wrapper(diffeq)
 
         if divergence_fn == "brute_force":
             self.divergence_fn = divergence_bf
@@ -98,8 +61,8 @@ class AutoencoderODEfunc(nn.Module):
     def __init__(self, input_shape, diffeq_encoder, diffeq_decoder, divergence_fn="approximate"):
         assert divergence_fn in ("brute_force", "approximate")
         self.input_shape = input_shape
-        self.diffeq_encoder = wrap_diffeq(diffeq_encoder)
-        self.diffeq_decoder = wrap_diffeq(diffeq_decoder)
+        self.diffeq_encoder = diffeq_wrapper(diffeq_encoder)
+        self.diffeq_decoder = diffeq_wrapper(diffeq_decoder)
 
     def reset_state(self):
         self._e = None
