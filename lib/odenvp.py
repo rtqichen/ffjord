@@ -20,6 +20,7 @@ class ODENVP(nn.Module):
         input_size,
         n_scale=float('inf'),
         n_resblocks=2,
+        multiplier=1,
         intermediate_dim=32,
         squash_input=True,
         alpha=0.05,
@@ -27,6 +28,7 @@ class ODENVP(nn.Module):
         super(ODENVP, self).__init__()
         self.n_scale = min(n_scale, self._calc_n_scale(input_size))
         self.n_resblocks = n_resblocks
+        self.multiplier = multiplier
         self.intermediate_dim = intermediate_dim
         self.squash_input = squash_input
         self.alpha = alpha
@@ -48,6 +50,7 @@ class ODENVP(nn.Module):
                     init_layer=layers.LogitTransform(self.alpha)  # input transform
                     if self.squash_input and i == 0 else None,
                     n_resblocks=self.n_resblocks,
+                    penult_multiplier=self.multiplier,
                 )
             )
             c, h, w = c * 2, h // 2, w // 2
@@ -105,13 +108,13 @@ class ODENVP(nn.Module):
 
 
 class StackedCNFLayers(layers.SequentialFlow):
-    def __init__(self, initial_size, idim=32, squeeze=True, init_layer=None, n_resblocks=2):
+    def __init__(self, initial_size, idim=32, squeeze=True, init_layer=None, n_resblocks=2, penult_multiplier=1):
         chain = []
         if init_layer is not None:
             chain.append(init_layer)
 
-        def _make_odefunc(size):
-            return layers.ODEfunc(size, diffeq_layers.ConcatResNet(size[0], idim, n_resblocks=n_resblocks))
+        def _make_odefunc(size, multiplier=1):
+            return layers.ODEfunc(size, diffeq_layers.ConcatResNet(size[0], idim, n_resblocks=n_resblocks * multiplier))
 
         if squeeze:
             c, h, w = initial_size
@@ -122,6 +125,6 @@ class StackedCNFLayers(layers.SequentialFlow):
                 layers.CNF(_make_odefunc(after_squeeze_size), T=0.3),
             ]
         else:
-            chain += [layers.CNF(_make_odefunc(initial_size), T=0.3)]
+            chain += [layers.CNF(_make_odefunc(initial_size, penult_multiplier), T=0.3)]
 
         super(StackedCNFLayers, self).__init__(chain)

@@ -27,11 +27,14 @@ parser.add_argument('-lr', help='Learning rate', type=float, default=1e-3)
 parser.add_argument('-wd', help='Weight decay', type=float, default=5e-5)
 parser.add_argument('-save', help='directory to save results', type=str, default='experiment1')
 parser.add_argument('-cpu', action='store_true')
-parser.add_argument('-val_batchsize', help='minibatch size', type=int, default=1000)
+parser.add_argument('-val_batchsize', help='minibatch size', type=int, default=100)
 parser.add_argument('-seed', type=int, default=None)
 
 parser.add_argument('-resume', type=str, default=None)
 parser.add_argument('-begin_epoch', type=int, default=0)
+
+parser.add_argument('-n_resblocks', type=int, default=None)
+parser.add_argument('-multiplier', type=int, default=None)
 
 parser.add_argument('-nworkers', type=int, default=4)
 parser.add_argument('-print_freq', help='Print progress every so iterations', type=int, default=20)
@@ -70,7 +73,8 @@ def add_noise(x):
 # Dataset and hyperparameters
 if args.dataset == 'cifar10':
     im_dim = 3
-    n_resblocks = 8
+    n_resblocks = 8 if args.n_resblocks is None else args.n_resblocks
+    multiplier = 1 if args.multiplier is None else args.multiplier
     intermediate_dim = 64
     n_scale = 2
     alpha = 0.05
@@ -93,7 +97,8 @@ if args.dataset == 'cifar10':
     )
 elif args.dataset == 'mnist':
     im_dim = 1
-    n_resblocks = 4
+    n_resblocks = 4 if args.n_resblocks is None else args.n_resblocks
+    multiplier = 1 if args.multiplier is None else args.multiplier
     intermediate_dim = 64
     n_scale = 3
     alpha = 1e-5
@@ -114,7 +119,8 @@ elif args.dataset == 'mnist':
     )
 elif args.dataset == 'celeba':
     im_dim = 3
-    n_resblocks = 2
+    n_resblocks = 2 if args.n_resblocks is None else args.n_resblocks
+    multiplier = 1 if args.multiplier is None else args.multiplier
     intermediate_dim = 64
     n_scale = 5
     alpha = 1e-5
@@ -142,6 +148,7 @@ model = ODENVP(
     input_size,
     n_scale=n_scale,
     n_resblocks=n_resblocks,
+    multiplier=multiplier,
     intermediate_dim=intermediate_dim,
     alpha=alpha,
 )
