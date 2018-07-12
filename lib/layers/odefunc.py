@@ -79,7 +79,7 @@ class ODEfunc(nn.Module):
         # increment num evals
         self._num_evals += 1
 
-        # to tensor
+        # convert to tensor
         t = torch.tensor(t).type_as(y)
         y = y[:, :-1]  # remove logp
         batchsize = y.shape[0]
@@ -92,3 +92,38 @@ class ODEfunc(nn.Module):
             divergence = self.divergence_fn(dy, y, e=self._e).view(batchsize, 1)
 
         return torch.cat([dy.view(batchsize, -1), -divergence], 1)
+
+
+class AutoencoderODEfunc(nn.Module):
+    def __init__(self, input_shape, diffeq_encoder, diffeq_decoder, divergence_fn="approximate"):
+        assert divergence_fn in ("brute_force", "approximate")
+        self.input_shape = input_shape
+        self.diffeq_encoder = wrap_diffeq(diffeq_encoder)
+        self.diffeq_decoder = wrap_diffeq(diffeq_decoder)
+
+    def reset_state(self):
+        self._e = None
+        self._num_evals = 0
+
+    def forward(self, t, y):
+        self._num_evals += 1
+        t = torch.tensor(t).type_as(y)
+        y = y[:, :-1]  # remove logp
+        batchsize = y.shape[0]
+        y = y.view(batchsize, *self.input_shape)
+
+        with torch.set_grad_enabled(True):
+            y.requires_grad_(True)
+            t.requires_grad_(True)
+            h = self.diffeq_encoder(t, y)
+            dy = self.diffeq_decoder(t, h)
+
+            # Estimate divergence.
+            if self._e is None:
+                self._e = torch.randn(h.shape).to(h)
+
+            e_vjp_dhdy = torch.autograd.grad(h, y, self._e, retain_graph=True)
+            e_vjp_dfdy = torch.autograd.grad(dy, h, e_vjp_dhdy, retain_graph=True)
+            divergence = torch.sum((e_vjp_dfdy * self._e).view(batchsize, -1), 1, keepdim=True)
+
+            return torch.cat([dy.view(batchsize, -1), -divergence], 1)

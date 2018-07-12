@@ -190,16 +190,12 @@ def compute_bits_per_dim(x):
 
 def train(epoch):
     batch_time = utils.AverageMeter()
-    data_time = utils.AverageMeter()
     bpd_meter = utils.AverageMeter()
 
     model.train()
 
     end = time.time()
     for i, x in enumerate(train_loader):
-        # measure data loading time
-        data_time.update(time.time() - end)
-
         # Training procedure:
         # for each sample x:
         #   compute z = f(x)
@@ -227,9 +223,8 @@ def train(epoch):
             logger.info(
                 'Epoch: [{0}][{1}/{2}]\t'
                 'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
                 'Bits/dim {bpd_meter.val:.4f} ({bpd_meter.avg:.4f})'.format(
-                    epoch, i, len(train_loader), batch_time=batch_time, data_time=data_time, bpd_meter=bpd_meter
+                    epoch, i, len(train_loader), batch_time=batch_time, bpd_meter=bpd_meter
                 )
             )
         if i % args.vis_freq == 0:
