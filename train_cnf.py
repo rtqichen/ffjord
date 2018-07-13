@@ -177,7 +177,7 @@ if __name__ == "__main__":
     model.to(device)
 
     # For visualization.
-    fixed_z = cvt(torch.randn(100, 784))
+    fixed_z = cvt(torch.randn(100, np.prod(data_shape)))
 
     time_meter = utils.RunningAverageMeter(0.97)
     loss_meter = utils.RunningAverageMeter(0.97)
@@ -250,6 +250,9 @@ if __name__ == "__main__":
             utils.makedirs(os.path.dirname(fig_filename))
             if args.data == "mnist":
                 generated_samples = model(fixed_z).view(-1, 1, 28, 28)
+                save_image(generated_samples, fig_filename, nrow=10)
+            elif args.data == "svhn":
+                generated_samples = model(fixed_z).view(-1, 3, 32, 32)
                 save_image(generated_samples, fig_filename, nrow=10)
             else:
                 generated_samples = toy_data.inf_train_gen(args.data, batch_size=10000)
