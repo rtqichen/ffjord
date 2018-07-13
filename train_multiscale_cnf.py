@@ -135,10 +135,13 @@ elif args.dataset == 'celeba':
         ), batch_size=args.batchsize, shuffle=True, num_workers=args.nworkers, pin_memory=use_cuda
     )
     test_loader = torch.utils.data.DataLoader(
-        datasets.CelebA(train=False, transform=transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.ToTensor(),
-        ])), batch_size=args.batchsize, shuffle=True, num_workers=args.nworkers, pin_memory=use_cuda
+        datasets.CelebA(
+            train=False, transform=transforms.Compose([
+                transforms.ToPILImage(),
+                transforms.Resize(args.imagesize),
+                transforms.ToTensor(),
+            ])
+        ), batch_size=args.val_batchsize, shuffle=False, num_workers=args.nworkers, pin_memory=use_cuda
     )
 
 input_size = (args.batchsize, im_dim, args.imagesize, args.imagesize)
@@ -264,15 +267,15 @@ def validate(epoch):
             if use_cuda:
                 x = x.cuda(async=True)
 
-            bpd_clean = compute_bits_per_dim(x)
+            # bpd_clean = compute_bits_per_dim(x)
             bpd_noisy = compute_bits_per_dim(add_noise(x))
 
-            bpd_meter_clean.update(bpd_clean.item(), x.size(0))
+            # bpd_meter_clean.update(bpd_clean.item(), x.size(0))
             bpd_meter_noisy.update(bpd_noisy.item(), x.size(0))
     val_time = time.time() - start
     logger.info(
         'Epoch: [{0}]\tTime {1:.2f}\t'
-        'Test[Clean] bits/dim {bpd_meter_clean.avg:.4f}\t'
+        # 'Test[Clean] bits/dim {bpd_meter_clean.avg:.4f}\t'
         'Test[Noisy] bits/dim {bpd_meter_noisy.avg:.4f}'.format(
             epoch, val_time, bpd_meter_clean=bpd_meter_clean, bpd_meter_noisy=bpd_meter_noisy
         )
