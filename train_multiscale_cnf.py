@@ -28,7 +28,7 @@ parser.add_argument('-lr', help='Learning rate', type=float, default=1e-3)
 parser.add_argument('-wd', help='Weight decay', type=float, default=5e-5)
 parser.add_argument('-save', help='directory to save results', type=str, default='experiment1')
 parser.add_argument('-cpu', action='store_true')
-parser.add_argument('-val_batchsize', help='minibatch size', type=int, default=100)
+parser.add_argument('-val_batchsize', help='minibatch size', type=int, default=500)
 parser.add_argument('-seed', type=int, default=None)
 
 parser.add_argument('-resume', type=str, default=None)

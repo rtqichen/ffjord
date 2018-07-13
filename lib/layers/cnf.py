@@ -23,10 +23,15 @@ class CNF(nn.Module):
             integration_times = self.time_range
         if reverse:
             integration_times = _flip(integration_times, 0)
+            atol = 1e-6
+            rtol = 1e-5
+        else:
+            atol = 1e-4
+            rtol = 1e-2
 
         # Fix noise throughout integration.
         self.odefunc.before_odeint(e=torch.randn(z.shape).to(z.device))
-        z_t, logpz_t = odeint(self.odefunc, (z, _logpz), integration_times.to(z), atol=1e-6, rtol=1e-5)
+        z_t, logpz_t = odeint(self.odefunc, (z, _logpz), integration_times.to(z), atol=atol, rtol=rtol)
 
         if len(integration_times) == 2:
             z_t, logpz_t = z_t[1], logpz_t[1]
