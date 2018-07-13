@@ -5,7 +5,6 @@ import os.path
 import numpy as np
 
 import torch
-from torch.autograd import Variable
 import torchvision.transforms as transforms
 from torchvision.utils import save_image
 
@@ -25,10 +24,10 @@ parser.add_argument('-noise', type=eval, default=True, choices=[True, False])
 parser.add_argument('-nepochs', help='Number of epochs for training', type=int, default=200)
 parser.add_argument('-batchsize', help='Minibatch size', type=int, default=100)
 parser.add_argument('-lr', help='Learning rate', type=float, default=1e-3)
-parser.add_argument('-wd', help='Weight decay', type=float, default=5e-5)
+parser.add_argument('-wd', help='Weight decay', type=float, default=1e-6)
 parser.add_argument('-save', help='directory to save results', type=str, default='experiment1')
 parser.add_argument('-cpu', action='store_true')
-parser.add_argument('-val_batchsize', help='minibatch size', type=int, default=500)
+parser.add_argument('-val_batchsize', help='minibatch size', type=int, default=300)
 parser.add_argument('-seed', type=int, default=None)
 
 parser.add_argument('-resume', type=str, default=None)
@@ -129,6 +128,7 @@ elif args.dataset == 'celeba':
         datasets.CelebA(
             train=True, transform=transforms.Compose([
                 transforms.ToPILImage(),
+                transforms.Resize(args.imagesize),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(), add_noise
             ])
@@ -205,9 +205,9 @@ def compute_bits_per_dim(x):
 
 
 def train(epoch):
-    batch_time = utils.AverageMeter()
-    bpd_meter = utils.AverageMeter()
-    nfe_meter = utils.AverageMeter()
+    batch_time = utils.RunningAverageMeter(0.97)
+    bpd_meter = utils.RunningAverageMeter(0.97)
+    nfe_meter = utils.RunningAverageMeter(0.97)
 
     model.train()
 
@@ -218,14 +218,13 @@ def train(epoch):
         #   compute z = f(x)
         #   maximize log p(x) = log p(z) - log |det df/dx|
 
-        x = Variable(x)
         if use_cuda:
             x = x.cuda(async=True)
 
         loss = compute_bits_per_dim(x)
 
         # update running averages
-        bpd_meter.update(loss.item(), x.size(0))
+        bpd_meter.update(loss.item())
         nfe_meter.update(get_num_evals(model))
 
         # compute gradient and do SGD step
