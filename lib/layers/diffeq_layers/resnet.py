@@ -4,23 +4,26 @@ from . import basic
 from . import container
 
 
-class ConcatResNet(container.SequentialDiffEq):
-    def __init__(self, dim, intermediate_dim, n_resblocks):
-        super(ConcatResNet, self).__init__()
+class ResNet(container.SequentialDiffEq):
+    def __init__(self, dim, intermediate_dim, n_resblocks, conv_block=None):
+        super(ResNet, self).__init__()
+
+        if conv_block is None:
+            conv_block = basic.ConcatCoordConv2d
 
         self.dim = dim
         self.intermediate_dim = intermediate_dim
         self.n_resblocks = n_resblocks
 
         layers = []
-        layers.append(basic.ConcatConv2d(dim, intermediate_dim, ksize=1, bias=False))
+        layers.append(conv_block(dim, intermediate_dim, ksize=1, bias=False))
         layers.append(nn.GroupNorm(2, intermediate_dim, eps=1e-4))
         layers.append(nn.ReLU(inplace=True))
         for _ in range(n_resblocks):
-            layers.append(ConcatBasicBlock(intermediate_dim))
-        layers.append(basic.ConcatConv2d(intermediate_dim, dim, ksize=1, bias=False))
+            layers.append(BasicBlock(intermediate_dim, conv_block))
+        layers.append(conv_block(intermediate_dim, dim, ksize=1, bias=False))
 
-        super(ConcatResNet, self).__init__(*layers)
+        super(ResNet, self).__init__(*layers)
 
     def __repr__(self):
         return (
@@ -30,15 +33,19 @@ class ConcatResNet(container.SequentialDiffEq):
         )
 
 
-class ConcatBasicBlock(nn.Module):
+class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, dim):
-        super(ConcatBasicBlock, self).__init__()
-        self.conv1 = basic.ConcatConv2d(dim, dim, ksize=3, padding=1, bias=False)
+    def __init__(self, dim, conv_block=None):
+        super(BasicBlock, self).__init__()
+
+        if conv_block is None:
+            conv_block = basic.ConcatCoordConv2d
+
+        self.conv1 = conv_block(dim, dim, ksize=3, padding=1, bias=False)
         self.norm1 = nn.GroupNorm(2, dim, eps=1e-4)
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = basic.ConcatConv2d(dim, dim, ksize=3, padding=1, bias=False)
+        self.conv2 = conv_block(dim, dim, ksize=3, padding=1, bias=False)
         self.norm2 = nn.GroupNorm(2, dim, eps=1e-4)
 
     def forward(self, t, x):

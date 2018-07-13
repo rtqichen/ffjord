@@ -115,3 +115,21 @@ class ConcatConv2d(nn.Module):
         tt = torch.ones_like(x[:, :1, :, :]) * t
         ttx = torch.cat([tt, x], 1)
         return self._layer(ttx)
+
+
+class ConcatCoordConv2d(nn.Module):
+    def __init__(self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False):
+        super(ConcatCoordConv2d, self).__init__()
+        module = nn.ConvTranspose2d if transpose else nn.Conv2d
+        self._layer = module(
+            dim_in + 3, dim_out, kernel_size=ksize, stride=stride, padding=padding, dilation=dilation, groups=groups,
+            bias=bias
+        )
+
+    def forward(self, t, x):
+        b, c, h, w = x.shape
+        hh = torch.arange(h).to(x).view(1, 1, h, 1).expand(b, 1, h, w)
+        ww = torch.arange(w).to(x).view(1, 1, 1, w).expand(b, 1, h, w)
+        tt = t.to(x).view(1, 1, 1, 1).expand(b, 1, h, w)
+        x_aug = torch.cat([x, tt, hh, ww], 1)
+        return self._layer(x_aug)

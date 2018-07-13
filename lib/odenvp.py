@@ -114,7 +114,7 @@ class StackedCNFLayers(layers.SequentialFlow):
             chain.append(init_layer)
 
         def _make_odefunc(size, multiplier=1):
-            return layers.ODEfunc(size, diffeq_layers.ConcatResNet(size[0], idim, n_resblocks=n_resblocks * multiplier))
+            return layers.ODEfunc(size, diffeq_layers.ResNet(size[0], idim, n_resblocks=n_resblocks * multiplier))
 
         if squeeze:
             c, h, w = initial_size
