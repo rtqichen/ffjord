@@ -26,7 +26,7 @@ torch.backends.cudnn.benchmark = True
 
 parser = argparse.ArgumentParser("Continuous Normalizing Flow")
 parser.add_argument(
-    "--data", choices=["swissroll", "8gaussians", "pinwheel", "circles", "moons", "mnist"], type=str, default="moons"
+    "--data", choices=["swissroll", "8gaussians", "pinwheel", "circles", "moons", "mnist", "svhn"], type=str, default="moons"
 )
 parser.add_argument("--dims", type=str, default="128,64,64,128")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
@@ -88,6 +88,14 @@ def get_dataset(args):
             data_shape = (1, 28, 28)
         else:
             data_shape = (784,)
+    elif args.data == "svhn":
+        trans = tforms.Compose([tforms.ToTensor(), add_noise, lambda x: x.view(-1)])
+        train_set = dset.SVHN(root="./data", split="train", transform=trans, download=True)
+        test_set = dset.SVHN(root="./data", split="test", transform=trans, download=True)
+        if args.conv:
+            data_shape = (3, 32, 32)
+        else:
+            data_shape = (3 * 32 * 32,)
     else:
         args.conv = False  # conv not supported for 2D datasets.
         dataset = toy_data.inf_train_gen(args.data, batch_size=args.data_size)
