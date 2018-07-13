@@ -13,7 +13,7 @@ class CNF(nn.Module):
         self.time_range = torch.tensor([0., float(T)])
         self.odefunc._num_evals = 0
 
-    def forward(self, z, logpz=None, integration_times=None, reverse=False, full_output=False):
+    def forward(self, z, logpz=None, integration_times=None, reverse=False, atol=1e-6, rtol=1e-5):
         if logpz is None:
             _logpz = torch.zeros(z.shape[0], 1).to(z)
         else:
@@ -23,11 +23,6 @@ class CNF(nn.Module):
             integration_times = self.time_range
         if reverse:
             integration_times = _flip(integration_times, 0)
-            atol = 1e-6
-            rtol = 1e-5
-        else:
-            atol = 1e-3
-            rtol = 1e-2
 
         # Fix noise throughout integration.
         self.odefunc.before_odeint(e=torch.randn(z.shape).to(z.device))
