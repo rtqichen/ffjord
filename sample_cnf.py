@@ -120,6 +120,7 @@ if __name__ == "__main__":
     model.to(device)
 
     with torch.no_grad():
+        print("Generating samples...")
         # generate the desired number of unconstrained samples
         for i in range(new_args.num_samples):
             fig_filename = os.path.join(new_args.save, "samples", "{:04d}.jpg".format(i))
@@ -128,15 +129,16 @@ if __name__ == "__main__":
             save_image(generated_samples, fig_filename, nrow=10)
             print(i)
 
+        print("Generating interpolations...")
         # produce interpolations in latent space
         if new_args.num_interpolations > 0:
             ims = []
             # get latents for 1 batch
             for x, y in test_loader:
-                x = x[:new_args.num_interpolations + 1]
+                x = cvt(x[:new_args.num_interpolations + 1])
                 z = model(x, reverse=True)
                 break
-            latents = z.detach().numpy()
+            latents = z.cpu().detach().numpy()
             for i in range(new_args.num_interpolations):
                 interp = interpolate(latents[i], latents[i + 1], new_args.interpolation_steps)
                 interp = cvt(torch.tensor(interp))
@@ -144,44 +146,51 @@ if __name__ == "__main__":
                 fig_filename = os.path.join(new_args.save, "interps", "{:04d}.jpg".format(i))
                 utils.makedirs(os.path.dirname(fig_filename))
                 save_image(generated_samples, fig_filename, nrow=new_args.interpolation_steps + 1)
+                print(i)
 
-    # produce data transformations (turn 1 into a 2)
-    if new_args.num_transformations > 0:
-        class_embeddings = defaultdict(list)
-        # embed training data
-        for x, y in test_loader:
-            z = model(x, reverse=True).detach().numpy()
+        # produce data transformations (turn 1 into a 2)
+        if new_args.num_transformations > 0:
+            print("Generating transformations...")
+            class_embeddings = defaultdict(list)
+            # embed training data
+            print("Embedding data...")
+            for x, y in test_loader:
+                z = model(cvt(x), reverse=True).cpu().detach().numpy()
+                y = y.detach().numpy()
+                for _z, _y in zip(z, y):
+                    class_embeddings[_y].append(_z)
+
+            # get mean embedding per class
+            mean_embeddings = {y: np.array(z).mean(axis=0) for y, z in class_embeddings.items()}
+            n_class = len(mean_embeddings.keys())
+
+            for x, y in test_loader:
+                x = cvt(x[:new_args.num_transformations])
+                y = y[:new_args.num_transformations]
+                z = model(x, reverse=True)
+                break
+            latents = z.cpu().detach().numpy()
             y = y.detach().numpy()
-            for _z, _y in zip(z, y):
-                class_embeddings[_y].append(_z)
-
-        # get mean embedding per class
-        mean_embeddings = {y: np.array(z).mean(axis=0) for y, z in class_embeddings.items()}
-        n_class = len(mean_embeddings.keys())
-
-        for x, y in test_loader:
-            x = x[:new_args.num_transformations]
-            y = y[:new_args.num_transformations]
-            z = model(x, reverse=True)
-            break
-        latents = z.detach().numpy()
-        y = y.detach().numpy()
-        all_new_latents = []
-        for latent, label in zip(latents, y):
-            # get embedding for data point's true class
-            class_embedding = mean_embeddings[label]
-            for i in range(n_class):
-                cur_embedding = mean_embeddings[i]
-                new_embedding = latent + cur_embedding - class_embedding
-                all_new_latents.append(new_embedding)
-        # generate new images
-        all_new_latents = np.array(all_new_latents)
-        all_new_latents = cvt(torch.tensor(all_new_latents))
-        generated_samples = model(all_new_latents)
-        for i in range(new_args.num_transformations):
-            orig_im = x[i: i + 1]
-            transformed_ims = generated_samples[i * n_class: (i + 1) * n_class]
-            ims = torch.cat([orig_im, transformed_ims], 0).view(-1, 1, 28, 28)
-            fig_filename = os.path.join(new_args.save, "transforms", "{:04d}.jpg".format(i))
-            utils.makedirs(os.path.dirname(fig_filename))
-            save_image(transformed_ims, fig_filename, nrow=n_class + 1)
+            all_new_latents = []
+            print("Getting latents...")
+            for latent, label in zip(latents, y):
+                # get embedding for data point's true class
+                class_embedding = mean_embeddings[label]
+                for i in range(n_class):
+                    cur_embedding = mean_embeddings[i]
+                    new_embedding = latent + cur_embedding - class_embedding
+                    all_new_latents.append(new_embedding)
+                print('.')
+            # generate new images
+            all_new_latents = np.array(all_new_latents)
+            all_new_latents = cvt(torch.tensor(all_new_latents))
+            generated_samples = model(all_new_latents)
+            print("Generating transformations...")
+            for i in range(new_args.num_transformations):
+                orig_im = x[i: i + 1]
+                transformed_ims = generated_samples[i * n_class: (i + 1) * n_class]
+                ims = torch.cat([orig_im, transformed_ims], 0).view(-1, 1, 28, 28)
+                fig_filename = os.path.join(new_args.save, "transforms", "{:04d}.jpg".format(i))
+                utils.makedirs(os.path.dirname(fig_filename))
+                save_image(ims, fig_filename, nrow=n_class + 1)
+                print(i)
