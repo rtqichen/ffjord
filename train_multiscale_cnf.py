@@ -35,6 +35,7 @@ parser.add_argument('-begin_epoch', type=int, default=0)
 
 parser.add_argument('-n_resblocks', type=int, default=None)
 parser.add_argument('-multiplier', type=int, default=None)
+parser.add_argument('-bn', type=eval, default=True, choices=[True, False])
 
 parser.add_argument('-nworkers', type=int, default=4)
 parser.add_argument('-print_freq', help='Print progress every so iterations', type=int, default=20)
@@ -78,6 +79,7 @@ if args.dataset == 'cifar10':
     intermediate_dim = 64
     n_scale = 2
     alpha = 0.05
+    bn_lag = 0.1
     train_loader = torch.utils.data.DataLoader(
         datasets.CIFAR10(
             args.dataroot, train=True, transform=transforms.Compose([
@@ -102,6 +104,7 @@ elif args.dataset == 'mnist':
     intermediate_dim = 64
     n_scale = 3
     alpha = 1e-5
+    bn_lag = 0.
     train_loader = torch.utils.data.DataLoader(
         datasets.MNIST(
             args.dataroot, train=True,
@@ -124,6 +127,7 @@ elif args.dataset == 'celeba':
     intermediate_dim = 64
     n_scale = 5
     alpha = 1e-5
+    bn_lag = 0.
     train_loader = torch.utils.data.DataLoader(
         datasets.CelebA(
             train=True, transform=transforms.Compose([
@@ -152,6 +156,8 @@ model = ODENVP(
     input_size,
     n_scale=n_scale,
     n_resblocks=n_resblocks,
+    bn=args.bn,
+    bn_lag=bn_lag,
     multiplier=multiplier,
     intermediate_dim=intermediate_dim,
     alpha=alpha,

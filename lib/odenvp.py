@@ -21,6 +21,8 @@ class ODENVP(nn.Module):
         n_scale=float('inf'),
         n_resblocks=2,
         multiplier=1,
+        bn=True,
+        bn_lag=0.,
         intermediate_dim=32,
         squash_input=True,
         alpha=0.05,
@@ -108,7 +110,10 @@ class ODENVP(nn.Module):
 
 
 class StackedCNFLayers(layers.SequentialFlow):
-    def __init__(self, initial_size, idim=32, squeeze=True, init_layer=None, n_resblocks=2, penult_multiplier=1):
+    def __init__(
+        self, initial_size, idim=32, squeeze=True, init_layer=None, n_resblocks=2, penult_multiplier=1, bn=True,
+        bn_lag=0.
+    ):
         chain = []
         if init_layer is not None:
             chain.append(init_layer)
@@ -121,10 +126,15 @@ class StackedCNFLayers(layers.SequentialFlow):
             after_squeeze_size = c * 4, h // 2, w // 2
             chain += [
                 layers.CNF(_make_odefunc(initial_size), T=0.3),
+                layers.MovingBatchNorm2d(initial_size[0], bn_lag=bn_lag),
                 layers.SqueezeLayer(2),
                 layers.CNF(_make_odefunc(after_squeeze_size), T=0.3),
+                layers.MovingBatchNorm2d(after_squeeze_size[0], bn_lag=bn_lag),
             ]
         else:
-            chain += [layers.CNF(_make_odefunc(initial_size, penult_multiplier), T=0.3)]
+            chain += [
+                layers.CNF(_make_odefunc(initial_size, penult_multiplier), T=0.3),
+                layers.MovingBatchNorm2d(initial_size[0], bn_lag=bn_lag)
+            ]
 
         super(StackedCNFLayers, self).__init__(chain)
