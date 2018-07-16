@@ -17,6 +17,7 @@ from torchvision.utils import save_image
 import integrate
 
 import lib.layers as layers
+import lib.regularizations as regularizations
 import lib.toy_data as toy_data
 import lib.utils as utils
 from lib.visualize_flow import visualize_transform
@@ -28,12 +29,14 @@ parser = argparse.ArgumentParser("Continuous Normalizing Flow")
 parser.add_argument(
     "--data", choices=["swissroll", "8gaussians", "pinwheel", "circles", "moons", "mnist", "svhn"], type=str, default="moons"
 )
-parser.add_argument("--dims", type=str, default="128,64,64,128")
+parser.add_argument("--dims", type=str, default="8,32,32,8")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
 parser.add_argument("--conv", type=eval, default=False, choices=[True, False])
-parser.add_argument("--layer_type", type=str, default="ignore")
-parser.add_argument("--divergence_fn", type=str, default="approximate")
+
+parser.add_argument("--layer_type", type=str, default="ignore", choices=["ignore", "concat", "hyper", "blend"])
+parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
+
 parser.add_argument("--alpha", type=float, default=1e-6)
 parser.add_argument("--time_length", type=float, default=1.0)
 
@@ -47,6 +50,11 @@ parser.add_argument("--weight_decay", type=float, default=1e-6)
 
 parser.add_argument("--adjoint", type=eval, default=True, choices=[True, False])
 parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
+parser.add_argument("--logit", type=eval, default=True, choices=[True, False])
+
+# Regularizations
+parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
+parser.add_argument("--dl2_coeff", type=float, default=0, help="Directional L2 on dynamics.")
 
 parser.add_argument("--begin_epoch", type=int, default=1)
 parser.add_argument("--resume", type=str, default=None)
@@ -106,8 +114,8 @@ def get_dataset(args):
 
     train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
-    print("==>>> total training batch number: {}".format(len(train_loader)))
-    print("==>>> total testing batch number: {}".format(len(test_loader)))
+    logger.info("==>>> total training batch number: {}".format(len(train_loader)))
+    logger.info("==>>> total testing batch number: {}".format(len(test_loader)))
     return train_loader, test_loader, data_shape
 
 
@@ -134,7 +142,45 @@ def compute_bits_per_dim(x, model):
     return bits_per_dim, torch.mean(logpx_logit)
 
 
+def regularized_model(model):
+    dict_of_regularizations = {}
+    if args.l2_coeff != 0:
+        dict_of_regularizations[regularizations.L2Regularization] = args.l2_coeff
+    if args.dl2_coeff != 0:
+        dict_of_regularizations[regularizations.DirectionalL2Regularization] = args.dl2_coeff
+
+    for layer in model.chain:
+        if isinstance(layer, layers.CNF):
+            layer.odefunc = regularizations.RegularizationsContainer(layer.odefunc, dict_of_regularizations)
+    return model
+
+
+def get_regularization(model):
+    reg_loss = 0
+    for layer in model.chain:
+        if isinstance(layer, layers.CNF):
+            reg_loss += layer.odefunc.regularization_loss
+    return reg_loss
+
+
+def count_nfe(model):
+    num_evals = 0
+    for layer in model.chain:
+        if isinstance(layer, layers.CNF):
+            num_evals += layer.num_evals()
+    return num_evals
+
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
 if __name__ == "__main__":
+
+    # logger
+    utils.makedirs(args.save)
+    logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
+    logger.info(args)
 
     # get deivce
     device = torch.device("cuda:" + str(args.gpu) if torch.cuda.is_available() else "cpu")
@@ -148,16 +194,25 @@ if __name__ == "__main__":
     strides = tuple(map(int, args.strides.split(",")))
 
     # build model
-    cnf = layers.CNF(
-        hidden_dims=hidden_dims, T=args.time_length, odeint=_odeint, input_shape=data_shape, strides=strides,
-        conv=args.conv, layer_type=args.layer_type, divergence_fn=args.divergence_fn, nonlinearity=args.nonlinearity
-    )
-    model = layers.SequentialFlow([
-        cnf,
-        layers.LogitTransform(alpha=args.alpha),
-    ])
+    chain = [
+        layers.CNF(
+            hidden_dims=hidden_dims,
+            T=args.time_length,
+            odeint=_odeint,
+            input_shape=data_shape,
+            strides=strides,
+            conv=args.conv,
+            layer_type=args.layer_type,
+            divergence_fn=args.divergence_fn,
+            nonlinearity=args.nonlinearity,
+        )
+    ]
+    if args.logit:
+        chain.append(layers.LogitTransform(alpha=args.alpha))
+    model = layers.SequentialFlow(chain)
 
-    print(model)
+    logger.info(model)
+    logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
 
     # optimizer
     optimizer = optim.Adam(model.parameters(), lr=args.lr_max, weight_decay=args.weight_decay)
@@ -204,10 +259,10 @@ if __name__ == "__main__":
             time_meter.update(time.time() - start)
             loss_meter.update(bits_per_dim.item())
             logp_logit_meter.update(logit_loss.item())
-            steps_meter.update(cnf.num_evals())
+            steps_meter.update(count_nfe(model))
 
             if itr % args.log_freq == 0:
-                print(
+                logger.info(
                     "Iter {:04d} | Time {:.4f}({:.4f}) | Bit/dim {:.4f}({:.4f}) | "
                     "Logit LogP {:.4f}({:.4f}) | Steps {:.0f}({:.2f})".format(
                         itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, logp_logit_meter.val,
@@ -221,7 +276,7 @@ if __name__ == "__main__":
         if epoch % args.val_freq == 0:
             with torch.no_grad():
                 start = time.time()
-                print("validating...")
+                logger.info("validating...")
                 losses = []
                 logit_losses = []
                 for (x, y) in test_loader:
@@ -231,7 +286,7 @@ if __name__ == "__main__":
                     logit_losses.append(logit_loss.item())
                 loss = np.mean(losses)
                 logit_loss = np.mean(logit_losses)
-                print(
+                logger.info(
                     "Epoch {:04d} | Time {:.4f}, Bit/dim {:.4f}, Logit LogP {:.4f}".
                     format(epoch, time.time() - start, loss, logit_loss)
                 )
@@ -258,6 +313,6 @@ if __name__ == "__main__":
                 generated_samples = toy_data.inf_train_gen(args.data, batch_size=10000)
                 plt.figure(figsize=(9, 3))
                 visualize_transform(
-                    generated_samples, torch.randn, standard_normal_logprob, cnf, samples=True, device=device
+                    generated_samples, torch.randn, standard_normal_logprob, model, samples=True, device=device
                 )
                 plt.savefig(fig_filename)

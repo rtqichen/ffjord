@@ -7,22 +7,34 @@ import torch.nn.functional as F
 __all__ = ["CNF"]
 
 
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Linear') != -1:
+        nn.init.constant_(m.weight, 0)
+        nn.init.normal_(m.bias, 0, 0.01)
+
+
 class HyperLinear(nn.Module):
-    def __init__(self, input_shape, dim_out, hypernet_dim=64, activation=nn.Tanh, **unused_kwargs):
+    def __init__(self, input_shape, dim_out, hypernet_dim=8, n_hidden=1, activation=nn.Tanh, **unused_kwargs):
         super(HyperLinear, self).__init__()
         self.dim_in = input_shape[0]
         self.dim_out = dim_out
         self.params_dim = self.dim_in * self.dim_out + self.dim_out
-        self._hypernet = nn.Sequential(
-            nn.Linear(1, hypernet_dim), activation(), nn.Linear(hypernet_dim, self.params_dim)
-        )
+
+        layers = []
+        dims = [1] + [hypernet_dim] * n_hidden + [self.params_dim]
+        for i in range(1, len(dims)):
+            layers.append(nn.Linear(dims[i - 1], dims[i]))
+            if i < len(dims) - 1:
+                layers.append(activation())
+        self._hypernet = nn.Sequential(*layers)
+        self._hypernet.apply(weights_init)
 
     def forward(self, t, x):
         params = self._hypernet(t.view(1, 1)).view(-1)
-        b = params[:self.dim_out].view(1, self.dim_out)
-        w = params[self.dim_out:].view(self.dim_in, self.dim_out)
-        x = torch.matmul(x, w) + b
-        return x
+        b = params[:self.dim_out].view(self.dim_out)
+        w = params[self.dim_out:].view(self.dim_out, self.dim_in)
+        return F.linear(x, w, b)
 
 
 class IgnoreLinear(nn.Module):
@@ -48,9 +60,8 @@ class ConcatLinear(nn.Module):
 class BlendLinear(nn.Module):
     def __init__(self, input_shape, dim_out, **unused_kwargs):
         super(BlendLinear, self).__init__()
-        dim_in = input_shape[0]
-        self._layer0 = nn.Linear(dim_in, dim_out)
-        self._layer1 = nn.Linear(dim_in, dim_out)
+        self._layer0 = nn.Linear(input_shape[0], dim_out)
+        self._layer1 = nn.Linear(input_shape[0], dim_out)
 
     def forward(self, t, x):
         y0 = self._layer0(x)
@@ -83,12 +94,6 @@ class HyperConv2d(nn.Module):
         self._hypernet = nn.Linear(1, self.params_dim)
         self.conv_fn = F.conv_transpose2d if transpose else F.conv2d
         self.input_shape = input_shape
-
-        def weights_init(m):
-            classname = m.__class__.__name__
-            if classname.find('Linear') != -1:
-                nn.init.normal_(m.weight, 0, 0.001)
-                nn.init.constant_(m.bias, 0)
 
         self._hypernet.apply(weights_init)
 
@@ -212,8 +217,8 @@ class ODEfunc(nn.Module):
                           "concat": ConcatConv2d, "blend": BlendConv2d}[layer_type]
         else:
             strides = [None] * (len(hidden_dims) + 1)
-            base_layer = {"ignore": IgnoreLinear, "hyper": HyperLinear,
-                          "concat": ConcatLinear, "blend": BlendLinear}[layer_type]
+            base_layer = {"ignore": IgnoreLinear, "hyper": HyperLinear, "concat": ConcatLinear,
+                          "blend": BlendLinear}[layer_type]
 
         # build layers and add them
         layers = []
@@ -248,6 +253,7 @@ class ODEfunc(nn.Module):
         elif divergence_fn == "approximate":
             self.divergence_fn = divergence_approx
 
+        self._e = None
         self._num_evals = 0
 
     def forward(self, t, y):

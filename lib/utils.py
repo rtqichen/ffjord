@@ -7,8 +7,7 @@ def makedirs(dirname):
         os.makedirs(dirname)
 
 
-def get_logger(logpath, filepath, package_files=[],
-               displaying=True, saving=True, debug=False):
+def get_logger(logpath, filepath, package_files=[], displaying=True, saving=True, debug=False):
     logger = logging.getLogger()
     if debug:
         level = logging.DEBUG
@@ -37,6 +36,7 @@ def get_logger(logpath, filepath, package_files=[],
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
+
     def __init__(self):
         self.reset()
 
