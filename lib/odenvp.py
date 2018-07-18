@@ -125,15 +125,15 @@ class StackedCNFLayers(layers.SequentialFlow):
             c, h, w = initial_size
             after_squeeze_size = c * 4, h // 2, w // 2
             chain += [
-                layers.CNF(_make_odefunc(initial_size), T=0.3),
+                layers.CNF(_make_odefunc(initial_size)),
                 layers.MovingBatchNorm2d(initial_size[0], bn_lag=bn_lag),
                 layers.SqueezeLayer(2),
-                layers.CNF(_make_odefunc(after_squeeze_size), T=0.3),
+                layers.CNF(_make_odefunc(after_squeeze_size)),
                 layers.MovingBatchNorm2d(after_squeeze_size[0], bn_lag=bn_lag),
             ]
         else:
             chain += [
-                layers.CNF(_make_odefunc(initial_size, penult_multiplier), T=0.3),
+                layers.CNF(_make_odefunc(initial_size, penult_multiplier)),
                 layers.MovingBatchNorm2d(initial_size[0], bn_lag=bn_lag)
             ]
 

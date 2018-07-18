@@ -7,10 +7,10 @@ __all__ = ["CNF"]
 
 
 class CNF(nn.Module):
-    def __init__(self, odefunc, T):
+    def __init__(self, odefunc):
         super(CNF, self).__init__()
         self.odefunc = odefunc
-        self.time_range = torch.tensor([0., float(T)])
+        self.register_parameter("end_time", nn.Parameter(torch.tensor([0.3])))
         self.odefunc._num_evals = 0
 
     def forward(self, z, logpz=None, integration_times=None, reverse=False, atol=1e-6, rtol=1e-5):
@@ -20,7 +20,7 @@ class CNF(nn.Module):
             _logpz = logpz
 
         if integration_times is None:
-            integration_times = self.time_range
+            integration_times = torch.cat([torch.tensor([0.]).to(self.end_time), self.end_time])
         if reverse:
             integration_times = _flip(integration_times, 0)
 

@@ -16,11 +16,11 @@ class ResNet(container.SequentialDiffEq):
         self.n_resblocks = n_resblocks
 
         layers = []
-        layers.append(conv_block(dim, intermediate_dim, ksize=1, bias=False))
-        layers.append(nn.GroupNorm(2, intermediate_dim, eps=1e-4))
-        layers.append(nn.ReLU(inplace=True))
+        layers.append(conv_block(dim, intermediate_dim, ksize=3, stride=1, padding=1, bias=False))
         for _ in range(n_resblocks):
             layers.append(BasicBlock(intermediate_dim, conv_block))
+        layers.append(nn.GroupNorm(2, intermediate_dim, eps=1e-4))
+        layers.append(nn.ReLU(inplace=True))
         layers.append(conv_block(intermediate_dim, dim, ksize=1, bias=False))
 
         super(ResNet, self).__init__(*layers)
@@ -42,23 +42,24 @@ class BasicBlock(nn.Module):
         if conv_block is None:
             conv_block = basic.ConcatCoordConv2d
 
-        self.conv1 = conv_block(dim, dim, ksize=3, padding=1, bias=False)
         self.norm1 = nn.GroupNorm(2, dim, eps=1e-4)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv_block(dim, dim, ksize=3, padding=1, bias=False)
+        self.relu1 = nn.ReLU(inplace=True)
+        self.conv1 = conv_block(dim, dim, ksize=3, stride=1, padding=1, bias=False)
         self.norm2 = nn.GroupNorm(2, dim, eps=1e-4)
+        self.relu2 = nn.ReLU(inplace=True)
+        self.conv2 = conv_block(dim, dim, ksize=3, stride=1, padding=1, bias=False)
 
     def forward(self, t, x):
         residual = x
 
-        out = self.conv1(t, x)
-        out = self.norm1(out)
-        out = self.relu(out)
+        out = self.norm1(x)
+        out = self.relu1(out)
+        out = self.conv1(t, out)
 
-        out = self.conv2(t, out)
         out = self.norm2(out)
+        out = self.relu2(out)
+        out = self.conv2(t, out)
 
         out += residual
-        out = self.relu(out)
 
         return out
