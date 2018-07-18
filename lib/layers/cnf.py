@@ -22,7 +22,7 @@ class CNF(nn.Module):
         self.nreg = nreg
         self.regularization_states = None
 
-    def forward(self, z, logpz=None, integration_times=None, reverse=False, atol=1e-6, rtol=1e-5):
+    def forward(self, z, logpz=None, integration_times=None, reverse=False, atol=1e-7, rtol=1e-6):
         if logpz is None:
             _logpz = torch.zeros(z.shape[0], 1).to(z)
         else:
@@ -39,7 +39,10 @@ class CNF(nn.Module):
         # Add regularization states.
         reg_states = tuple(torch.zeros(1).to(z) for _ in range(self.nreg))
 
-        state_t = odeint(self.odefunc, (z, _logpz) + reg_states, integration_times.to(z), atol=atol, rtol=rtol)
+        state_t = odeint(
+            self.odefunc, (z, _logpz) + reg_states,
+            integration_times.to(z), atol=atol, rtol=rtol, method="dopri5", options={"max_num_steps": 2**31 - 1}
+        )
 
         if len(integration_times) == 2:
             state_t = tuple(s[1] for s in state_t)
