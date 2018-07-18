@@ -87,9 +87,8 @@ def update_lr(optimizer, itr):
         param_group["lr"] = lr
 
 
-def get_dataset(args):
+def get_dataset(args, trans=tforms.Compose([tforms.ToTensor(), add_noise, lambda x: x.view(-1)])):
     if args.data == "mnist":
-        trans = tforms.Compose([tforms.ToTensor(), add_noise, lambda x: x.view(-1)])
         train_set = dset.MNIST(root="./data", train=True, transform=trans, download=True)
         test_set = dset.MNIST(root="./data", train=False, transform=trans, download=True)
         if args.conv:
@@ -97,9 +96,15 @@ def get_dataset(args):
         else:
             data_shape = (784,)
     elif args.data == "svhn":
-        trans = tforms.Compose([tforms.ToTensor(), add_noise, lambda x: x.view(-1)])
         train_set = dset.SVHN(root="./data", split="train", transform=trans, download=True)
         test_set = dset.SVHN(root="./data", split="test", transform=trans, download=True)
+        if args.conv:
+            data_shape = (3, 32, 32)
+        else:
+            data_shape = (3 * 32 * 32,)
+    elif args.data == "cifar10":
+        train_set = dset.CIFAR10(root="./data", train=True, transform=trans, download=True)
+        test_set = dset.CIFAR10(root="./data", train=False, transform=trans, download=True)
         if args.conv:
             data_shape = (3, 32, 32)
         else:
@@ -194,17 +199,23 @@ if __name__ == "__main__":
     strides = tuple(map(int, args.strides.split(",")))
 
     # build model
+    # neural net that parameterizes the gradient of the flow
+    gfunc = layers.ODEnet(
+        hidden_dims=hidden_dims,
+        input_shape=data_shape,
+        strides=strides,
+        conv=args.conv,
+        layer_type=args.layer_type,
+        nonlinearity=args.nonlinearity
+    )
+    # flow chain
     chain = [
         layers.CNF(
-            hidden_dims=hidden_dims,
             T=args.time_length,
             odeint=_odeint,
             input_shape=data_shape,
-            strides=strides,
-            conv=args.conv,
-            layer_type=args.layer_type,
+            gfunc=gfunc,
             divergence_fn=args.divergence_fn,
-            nonlinearity=args.nonlinearity,
         )
     ]
     if args.logit:

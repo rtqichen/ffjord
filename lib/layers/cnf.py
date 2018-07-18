@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-__all__ = ["CNF"]
+__all__ = ["CNF", "ODEnet"]
 
 
 def weights_init(m):
@@ -199,18 +199,16 @@ def divergence_approx(z, x, e=None):
     return approx_tr_dzdx
 
 
-class ODEfunc(nn.Module):
-    def __init__(
-        self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus",
-        divergence_fn="approximate"
-    ):
-        super(ODEfunc, self).__init__()
+class ODEnet(nn.Module):
+    """
+    Helper class to make neural nets for use in continuous normalizing flows
+    """
+    def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus"):
+        super(ODEnet, self).__init__()
         assert layer_type in ("ignore", "hyper", "concat", "blend")
-        assert divergence_fn in ("brute_force", "approximate")
         assert nonlinearity in ("tanh", "relu", "softplus", "elu")
 
         self.nonlinearity = {"tanh": F.tanh, "relu": F.relu, "softplus": F.softplus, "elu": F.elu}[nonlinearity]
-
         if conv:
             assert len(strides) == len(hidden_dims) + 1
             base_layer = {"ignore": IgnoreConv2d, "hyper": HyperConv2d,
@@ -225,7 +223,6 @@ class ODEfunc(nn.Module):
         hidden_shape = input_shape
 
         for dim_out, stride in zip(hidden_dims + (input_shape[0],), strides):
-
             if stride is None:
                 layer_kwargs = {}
             elif stride == 1:
@@ -248,6 +245,21 @@ class ODEfunc(nn.Module):
 
         self.layers = nn.ModuleList(layers)
 
+    def forward(self, t, y):
+        dx = y
+        for l, layer in enumerate(self.layers):
+            dx = layer(t, dx)
+            # if not last layer, use nonlinearity
+            if l < len(self.layers) - 1:
+                dx = self.nonlinearity(dx)
+        return dx
+
+
+class ODEfunc(nn.Module):
+    def __init__(self, gfunc, divergence_fn="approximate"):
+        super(ODEfunc, self).__init__()
+        self.gfunc = gfunc
+        assert divergence_fn in ("brute_force", "approximate")
         if divergence_fn == "brute_force":
             self.divergence_fn = divergence_bf
         elif divergence_fn == "approximate":
@@ -268,31 +280,19 @@ class ODEfunc(nn.Module):
         with torch.set_grad_enabled(True):
             y.requires_grad_(True)
             t.requires_grad_(True)
-            dx = y
-            for l, layer in enumerate(self.layers):
-                dx = layer(t, dx)
-                # if not last layer, use nonlinearity
-                if l < len(self.layers) - 1:
-                    dx = self.nonlinearity(dx)
+            dx = self.gfunc(t, y)
 
             divergence = self.divergence_fn(dx, y, e=self._e).view(batchsize, 1)
         return torch.cat([dx, -divergence], 1)
 
 
 class CNF(nn.Module):
-    def __init__(
-        self, hidden_dims, T, odeint, input_shape, strides=None, conv=False, layer_type="concat",
-        divergence_fn="approximate", nonlinearity="tanh"
-    ):
+    def __init__(self, T, odeint, input_shape, gfunc, divergence_fn="approximate"):
         super(CNF, self).__init__()
-        self.odefunc = ODEfunc(
-            hidden_dims=hidden_dims, input_shape=input_shape, strides=strides, conv=conv, layer_type=layer_type,
-            divergence_fn=divergence_fn, nonlinearity=nonlinearity
-        )
+        self.odefunc = ODEfunc(gfunc, divergence_fn=divergence_fn)
         self.input_shape = input_shape
         self.time_range = torch.tensor([0., float(T)])
         self.odeint = odeint
-        self._num_evals = 0
 
     def forward(self, z, logpz=None, integration_times=None, reverse=False, full_output=False):
         if logpz is None:
