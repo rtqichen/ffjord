@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import lib.layers as layers
 import lib.layers.diffeq_layers as diffeq_layers
+import lib.layers.wrappers.cnf_regularization as reg_lib
 
 
 class ODENVP(nn.Module):
@@ -26,6 +27,8 @@ class ODENVP(nn.Module):
         intermediate_dim=32,
         squash_input=True,
         alpha=0.05,
+        l2_coeff=0.,
+        dl2_coeff=0.,
     ):
         super(ODENVP, self).__init__()
         self.n_scale = min(n_scale, self._calc_n_scale(input_size))
@@ -34,6 +37,8 @@ class ODENVP(nn.Module):
         self.intermediate_dim = intermediate_dim
         self.squash_input = squash_input
         self.alpha = alpha
+
+        self._create_regularization_fns(l2_coeff, dl2_coeff)
 
         if not self.n_scale > 0:
             raise ValueError('Could not compute number of scales for input of' 'size (%d,%d,%d,%d)' % input_size)
@@ -53,10 +58,35 @@ class ODENVP(nn.Module):
                     if self.squash_input and i == 0 else None,
                     n_resblocks=self.n_resblocks,
                     penult_multiplier=self.multiplier,
+                    cnf_regularization_fns=self.regularization_fns
                 )
             )
             c, h, w = c * 2, h // 2, w // 2
         return nn.ModuleList(transforms)
+
+    def _create_regularization_fns(self, l2_coeff, dl2_coeff):
+        regularization_fns = []
+        regularization_coeffs = []
+        if l2_coeff != 0:
+            regularization_coeffs.append(l2_coeff)
+            regularization_fns.append(reg_lib.l2_regularzation_fn)
+        if dl2_coeff != 0:
+            regularization_coeffs.append(dl2_coeff)
+            regularization_fns.append(reg_lib.directional_l2_regularization_fn)
+        self.regularization_coeffs = tuple(regularization_coeffs)
+        self.regularization_fns = tuple(regularization_fns)
+
+    def get_regularization(self):
+        if len(self.regularization_fns) == 0:
+            return None
+
+        acc_reg_states = tuple([0.] * len(self.regularization_fns))
+        for module in self.modules():
+            if isinstance(module, layers.CNF):
+                acc_reg_states = tuple(
+                    acc + reg for acc, reg in zip(acc_reg_states, module.get_regularization_states())
+                )
+        return sum(state * coeff for state, coeff in zip(acc_reg_states, self.regularization_coeffs))
 
     def _calc_n_scale(self, input_size):
         _, _, h, w = input_size
@@ -80,7 +110,7 @@ class ODENVP(nn.Module):
                 output_sizes.append((n, c, h, w))
         return tuple(output_sizes)
 
-    def forward(self, x, logpx=None, reverse=False):
+    def forward(self, x, logpx=None, reverse=False, include_regularition=False):
         if reverse:
             return self._generate(x, logpx)
         else:
@@ -111,8 +141,16 @@ class ODENVP(nn.Module):
 
 class StackedCNFLayers(layers.SequentialFlow):
     def __init__(
-        self, initial_size, idim=32, squeeze=True, init_layer=None, n_resblocks=2, penult_multiplier=1, bn=True,
-        bn_lag=0.
+        self,
+        initial_size,
+        idim=32,
+        squeeze=True,
+        init_layer=None,
+        n_resblocks=2,
+        penult_multiplier=1,
+        bn=True,
+        bn_lag=0.,
+        cnf_regularization_fns=None,
     ):
         chain = []
         if init_layer is not None:
@@ -125,15 +163,15 @@ class StackedCNFLayers(layers.SequentialFlow):
             c, h, w = initial_size
             after_squeeze_size = c * 4, h // 2, w // 2
             chain += [
-                layers.CNF(_make_odefunc(initial_size)),
+                layers.CNF(_make_odefunc(initial_size), cnf_regularization_fns),
                 layers.MovingBatchNorm2d(initial_size[0], bn_lag=bn_lag),
                 layers.SqueezeLayer(2),
-                layers.CNF(_make_odefunc(after_squeeze_size)),
+                layers.CNF(_make_odefunc(after_squeeze_size), cnf_regularization_fns),
                 layers.MovingBatchNorm2d(after_squeeze_size[0], bn_lag=bn_lag),
             ]
         else:
             chain += [
-                layers.CNF(_make_odefunc(initial_size, penult_multiplier)),
+                layers.CNF(_make_odefunc(initial_size, penult_multiplier), cnf_regularization_fns),
                 layers.MovingBatchNorm2d(initial_size[0], bn_lag=bn_lag)
             ]
 

@@ -37,6 +37,9 @@ parser.add_argument('-n_resblocks', type=int, default=None)
 parser.add_argument('-multiplier', type=int, default=None)
 parser.add_argument('-bn', type=eval, default=True, choices=[True, False])
 
+parser.add_argument('-l2_coeff', type=float, default=0.)
+parser.add_argument('-dl2_coeff', type=float, default=0.)
+
 parser.add_argument('-nworkers', type=int, default=4)
 parser.add_argument('-print_freq', help='Print progress every so iterations', type=int, default=20)
 parser.add_argument('-vis_freq', help='Visualize progress every so iterations', type=int, default=500)
@@ -161,6 +164,8 @@ model = ODENVP(
     multiplier=multiplier,
     intermediate_dim=intermediate_dim,
     alpha=alpha,
+    l2_coeff=args.l2_coeff,
+    dl2_coeff=args.dl2_coeff,
 )
 prior = priors.Normal()
 logger.info(model)
@@ -210,13 +215,18 @@ def compute_bits_per_dim(x):
     logpx_per_dim = torch.mean(logpx) / (args.imagesize * args.imagesize * im_dim)
     bits_per_dim = -(logpx_per_dim - np.log(256)) / np.log(2)
 
-    return bits_per_dim
+    # regularization
+    regularization = model.get_regularization()
+    # print(regularization)
+
+    return bits_per_dim, regularization
 
 
 def train(epoch):
     batch_time = utils.RunningAverageMeter(0.97)
     bpd_meter = utils.RunningAverageMeter(0.97)
     nfe_meter = utils.RunningAverageMeter(0.97)
+    reg_meter = utils.RunningAverageMeter(0.97)
 
     model.train()
 
@@ -230,11 +240,15 @@ def train(epoch):
         if use_cuda:
             x = x.cuda(async=True)
 
-        loss = compute_bits_per_dim(x)
+        loss, reg = compute_bits_per_dim(x)
 
         # update running averages
         bpd_meter.update(loss.item())
         nfe_meter.update(get_num_evals(model))
+
+        if reg is not None:
+            loss = loss + reg
+            reg_meter.update(reg.item())
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -246,14 +260,19 @@ def train(epoch):
         end = time.time()
 
         if i % args.print_freq == 0:
-            logger.info(
-                'Epoch: [{0}][{1}/{2}]\t'
-                'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                'Bits/dim {bpd_meter.val:.4f} ({bpd_meter.avg:.4f})\t'
+            log_str = (
+                'Epoch: [{0}][{1}/{2}] | '
+                'Time {batch_time.val:.3f} ({batch_time.avg:.3f}) | '
+                'Bits/dim {bpd_meter.val:.4f} ({bpd_meter.avg:.4f}) | '
                 'NFE {nfe_meter.val:.0f} ({nfe_meter.avg:.3f})'.format(
                     epoch, i, len(train_loader), batch_time=batch_time, bpd_meter=bpd_meter, nfe_meter=nfe_meter
                 )
             )
+
+            if reg is not None:
+                log_str += ' | Reg {reg_meter.val:.4f} ({reg_meter.avg:.4f})'.format(reg_meter=reg_meter)
+
+            logger.info(log_str)
         if i % args.vis_freq == 0:
             visualize(epoch, i, x)
 
@@ -262,7 +281,6 @@ def validate(epoch):
     """
     Evaluates the cross entropy between p_data and p_model. Also evaluates the cross entropy if data is jittered.
     """
-    bpd_meter_clean = utils.AverageMeter()
     bpd_meter_noisy = utils.AverageMeter()
 
     model.eval()
@@ -273,18 +291,13 @@ def validate(epoch):
             if use_cuda:
                 x = x.cuda(async=True)
 
-            # bpd_clean = compute_bits_per_dim(x)
-            bpd_noisy = compute_bits_per_dim(add_noise(x))
+            bpd_noisy, _ = compute_bits_per_dim(add_noise(x))
 
-            # bpd_meter_clean.update(bpd_clean.item(), x.size(0))
             bpd_meter_noisy.update(bpd_noisy.item(), x.size(0))
     val_time = time.time() - start
     logger.info(
-        'Epoch: [{0}]\tTime {1:.2f}\t'
-        # 'Test[Clean] bits/dim {bpd_meter_clean.avg:.4f}\t'
-        'Test[Noisy] bits/dim {bpd_meter_noisy.avg:.4f}'.format(
-            epoch, val_time, bpd_meter_clean=bpd_meter_clean, bpd_meter_noisy=bpd_meter_noisy
-        )
+        'Epoch: [{0}] | Time {1:.2f} | '
+        'Test[Noisy] bits/dim {bpd_meter_noisy.avg:.4f}'.format(epoch, val_time, bpd_meter_noisy=bpd_meter_noisy)
     )
 
 
