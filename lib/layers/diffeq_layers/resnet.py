@@ -3,6 +3,8 @@ import torch.nn as nn
 from . import basic
 from . import container
 
+NGROUPS = 16
+
 
 class ResNet(container.SequentialDiffEq):
     def __init__(self, dim, intermediate_dim, n_resblocks, conv_block=None):
@@ -19,7 +21,7 @@ class ResNet(container.SequentialDiffEq):
         layers.append(conv_block(dim, intermediate_dim, ksize=3, stride=1, padding=1, bias=False))
         for _ in range(n_resblocks):
             layers.append(BasicBlock(intermediate_dim, conv_block))
-        layers.append(nn.GroupNorm(2, intermediate_dim, eps=1e-4))
+        layers.append(nn.GroupNorm(NGROUPS, intermediate_dim, eps=1e-4))
         layers.append(nn.ReLU(inplace=True))
         layers.append(conv_block(intermediate_dim, dim, ksize=1, bias=False))
 
@@ -42,10 +44,10 @@ class BasicBlock(nn.Module):
         if conv_block is None:
             conv_block = basic.ConcatCoordConv2d
 
-        self.norm1 = nn.GroupNorm(2, dim, eps=1e-4)
+        self.norm1 = nn.GroupNorm(NGROUPS, dim, eps=1e-4)
         self.relu1 = nn.ReLU(inplace=True)
         self.conv1 = conv_block(dim, dim, ksize=3, stride=1, padding=1, bias=False)
-        self.norm2 = nn.GroupNorm(2, dim, eps=1e-4)
+        self.norm2 = nn.GroupNorm(NGROUPS, dim, eps=1e-4)
         self.relu2 = nn.ReLU(inplace=True)
         self.conv2 = conv_block(dim, dim, ksize=3, stride=1, padding=1, bias=False)
 
