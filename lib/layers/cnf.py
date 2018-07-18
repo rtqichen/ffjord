@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-__all__ = ["CNF", "ODEnet"]
+__all__ = ["CNF", "ODEnet", "ConcatLinear", "IgnoreLinear", "HyperLinear", "BlendLinear"]
 
 
 def weights_init(m):
@@ -38,18 +38,18 @@ class HyperLinear(nn.Module):
 
 
 class IgnoreLinear(nn.Module):
-    def __init__(self, input_shape, dim_out, **unused_kwargs):
+    def __init__(self, input_shape, dim_out, layer_type=nn.Linear, **unused_kwargs):
         super(IgnoreLinear, self).__init__()
-        self._layer = nn.Linear(input_shape[0], dim_out)
+        self._layer = layer_type(input_shape[0], dim_out)
 
     def forward(self, t, x):
         return self._layer(x)
 
 
 class ConcatLinear(nn.Module):
-    def __init__(self, input_shape, dim_out, **unused_kwargs):
+    def __init__(self, input_shape, dim_out, layer_type=nn.Linear, **unused_kwargs):
         super(ConcatLinear, self).__init__()
-        self._layer = nn.Linear(input_shape[0] + 1, dim_out)
+        self._layer = layer_type(input_shape[0] + 1, dim_out)
 
     def forward(self, t, x):
         tt = torch.ones_like(x[:, :1]) * t
@@ -58,10 +58,10 @@ class ConcatLinear(nn.Module):
 
 
 class BlendLinear(nn.Module):
-    def __init__(self, input_shape, dim_out, **unused_kwargs):
+    def __init__(self, input_shape, dim_out, layer_type, **unused_kwargs):
         super(BlendLinear, self).__init__()
-        self._layer0 = nn.Linear(input_shape[0], dim_out)
-        self._layer1 = nn.Linear(input_shape[0], dim_out)
+        self._layer0 = layer_type(input_shape[0], dim_out)
+        self._layer1 = layer_type(input_shape[0], dim_out)
 
     def forward(self, t, x):
         y0 = self._layer0(x)
