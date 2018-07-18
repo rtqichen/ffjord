@@ -58,7 +58,7 @@ class ConcatLinear(nn.Module):
 
 
 class BlendLinear(nn.Module):
-    def __init__(self, input_shape, dim_out, layer_type, **unused_kwargs):
+    def __init__(self, input_shape, dim_out, layer_type=nn.Linear, **unused_kwargs):
         super(BlendLinear, self).__init__()
         self._layer0 = layer_type(input_shape[0], dim_out)
         self._layer1 = layer_type(input_shape[0], dim_out)

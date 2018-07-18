@@ -44,7 +44,6 @@ parser.add_argument("--time_length", type=float, default=1.0)
 parser.add_argument("--num_epochs", type=int, default=1000)
 parser.add_argument("--batch_size", type=int, default=200)
 parser.add_argument("--lr", type=float, default=1e-5)
-parser.add_argument("--weight_decay", type=float, default=0.0)
 
 parser.add_argument("--adjoint", type=eval, default=True, choices=[True, False])
 parser.add_argument("--vanilla_vae", type=eval, default=False, choices=[True, False])
@@ -52,6 +51,8 @@ parser.add_argument("--vanilla_vae", type=eval, default=False, choices=[True, Fa
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
 parser.add_argument("--dl2_coeff", type=float, default=0, help="Directional L2 on dynamics.")
+parser.add_argument("--weight_decay", type=float, default=0.0)
+parser.add_argument("--warm_up", type=int, default=-1)
 
 parser.add_argument("--begin_epoch", type=int, default=1)
 parser.add_argument("--resume", type=str, default=None)
@@ -238,12 +239,12 @@ class VAE(nn.Module):
         x_logit = self.decoder(zT[:, :, None, None]) + self.output_bias.to(x)
         nll = self.nll(x_logit, x).view(batch_size, -1).sum(dim=1)
         logpx = -nll
-        elbo = logpx + logpzT - logqzT[:, 0]
+        kl = logpzT - logqzT[:, 0]
 
         if return_recons:
-            return elbo, torch.sigmoid(x_logit)
+            return logpx, kl, torch.sigmoid(x_logit)
         else:
-            return elbo
+            return logpx, kl
 
     def sample(self, num_samples=100, z=None):
         if z is None:
@@ -375,6 +376,7 @@ if __name__ == "__main__":
     best_loss = float("inf")
     itr = (args.begin_epoch - 1) * len(train_loader)
     for epoch in range(args.begin_epoch, args.num_epochs + 1):
+        kl_weight = 1. if args.warm_up < 0 else min(float(epoch) / args.warm_up, 1.0)
         for _, x in enumerate(train_loader):
             start = time.time()
             optimizer.zero_grad()
@@ -383,8 +385,9 @@ if __name__ == "__main__":
             x = cvt(x)
 
             # compute loss
-            elbo = vae(x)
-            loss = -elbo.mean()
+            logpx, kl = vae(x)
+            weighted_elbo = logpx + kl_weight * kl
+            loss = -weighted_elbo.mean()
             loss.backward()
             optimizer.step()
 
@@ -394,9 +397,9 @@ if __name__ == "__main__":
 
             if itr % args.log_freq == 0:
                 logger.info(
-                    "Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.4f}({:.4f}) | Steps {:.0f}({:.2f})".format(
+                    "Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.4f}({:.4f}) | Steps {:.0f}({:.2f}) | KL-Weight {}".format(
                         itr, time_meter.val, time_meter.avg, loss_meter.val,
-                        loss_meter.avg, steps_meter.val, steps_meter.avg
+                        loss_meter.avg, steps_meter.val, steps_meter.avg, kl_weight
                     )
                 )
 
@@ -410,7 +413,8 @@ if __name__ == "__main__":
                 losses = []
                 for x in valid_loader:
                     x = cvt(x)
-                    elbo = vae(x)
+                    logpx, kl = vae(x)
+                    elbo = logpx + kl
                     loss = -elbo.mean()
                     losses.append(loss.item())
                 loss = np.mean(losses)
@@ -441,7 +445,7 @@ if __name__ == "__main__":
                 save_image(generated_samples, sample_filename, nrow=10)
                 # reconstructions
                 x = cvt(fixed_x)
-                elbo, recons = vae(x, return_recons=True)
+                _, _, recons = vae(x, return_recons=True)
                 save_image(recons, recons_filename, nrow=10)
                 save_image(fixed_x, orig_filename, nrow=10)
 
