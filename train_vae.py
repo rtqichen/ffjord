@@ -47,6 +47,7 @@ parser.add_argument("--lr", type=float, default=1e-5)
 parser.add_argument("--weight_decay", type=float, default=0.0)
 
 parser.add_argument("--adjoint", type=eval, default=True, choices=[True, False])
+parser.add_argument("--vanilla_vae", type=eval, default=False, choices=[True, False])
 
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
@@ -202,6 +203,7 @@ class VAE(nn.Module):
         self.mu_layer = nn.Linear(dim_out, hidden_dim)
         self.logvar_layer = nn.Linear(dim_out, hidden_dim)
         self.nll = nn.BCEWithLogitsLoss(reduce=False)
+        self.input_bias = torch.tensor(train_mean[None, :, :, :])
         train_mean = train_mean * (1. - 2. * alpha) + alpha  # push in from 0 and 1
         train_mean_logit = np.log(train_mean) - np.log(1. - train_mean)
         self.output_bias = torch.tensor(train_mean_logit[None, :, :, :])
@@ -215,15 +217,21 @@ class VAE(nn.Module):
     def forward(self, x, return_recons=False):
         # encode
         batch_size = x.size()[0]
-        h = self.encoder(x).view(batch_size, -1)
+        h = self.encoder(x - self.input_bias.to(x)).view(batch_size, -1)
         mu = self.mu_layer(h)
         logvar = self.logvar_layer(h)
         # sample z0 ~ N(mu, logvar)
         z0 = self._reparam(mu, logvar)
 
-        # integrate flow
         logqz0 = normal_logprob(z0, mu, logvar).sum(dim=1, keepdim=True)
-        zT, logqzT = self.flow(z0, logqz0, reverse=False)
+
+        # if no flow z0 is zT
+        if self.flow is None:
+            zT = z0
+            logqzT = logqz0
+        # if using flow, integrate the flow to get zT and log q(zT)
+        else:
+            zT, logqzT = self.flow(z0, logqz0, reverse=False)
 
         # get generaitve model likelihood and decode
         logpzT = standard_normal_logprob(zT).sum(dim=1)
@@ -243,6 +251,12 @@ class VAE(nn.Module):
 
         x_logit = self.decoder(z[:, :, None, None])
         return torch.sigmoid(x_logit)
+
+    def num_evals(self):
+        if self.flow is None:
+            return 0
+        else:
+            return self.flow.num_evals()
 
 
 def normal_logprob(z, mu, logvar):
@@ -314,13 +328,18 @@ if __name__ == "__main__":
     hidden_dims = tuple(map(int, args.dims.split(",")))
 
     gfunc = ODEnet(hidden_dims, args.nonlinearity, args.layer_type, args.hidden_dim)
-    flow = layers.CNF(
-        T=args.time_length,
-        odeint=_odeint,
-        input_shape=(args.hidden_dim,),
-        gfunc=gfunc,
-        divergence_fn=args.divergence_fn
-    )
+    if args.vanilla_vae:
+        flow = None
+        logger.info("Training Vanilla VAE")
+    else:
+        flow = layers.CNF(
+            T=args.time_length,
+            odeint=_odeint,
+            input_shape=(args.hidden_dim,),
+            gfunc=gfunc,
+            divergence_fn=args.divergence_fn
+        )
+
     vae = VAE(args.hidden_dim, flow, train_mean=train_mean)
 
     logger.info(vae)
@@ -371,7 +390,7 @@ if __name__ == "__main__":
 
             time_meter.update(time.time() - start)
             loss_meter.update(loss.item())
-            steps_meter.update(vae.flow.num_evals())
+            steps_meter.update(vae.num_evals())
 
             if itr % args.log_freq == 0:
                 logger.info(
