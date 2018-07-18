@@ -43,7 +43,7 @@ parser.add_argument("--time_length", type=float, default=1.0)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
 parser.add_argument("--batch_size", type=int, default=200)
-parser.add_argument("--lr", type=float, default=1e-3)
+parser.add_argument("--lr", type=float, default=1e-5)
 parser.add_argument("--weight_decay", type=float, default=0.0)
 
 parser.add_argument("--adjoint", type=eval, default=True, choices=[True, False])
@@ -208,7 +208,7 @@ class VAE(nn.Module):
 
     @staticmethod
     def _reparam(mu, logvar):
-        eps = torch.randn(mu.size())
+        eps = torch.randn(mu.size()).to(mu)
         std = torch.exp(logvar / 2.)
         return mu + eps * std
 
@@ -222,18 +222,16 @@ class VAE(nn.Module):
         z0 = self._reparam(mu, logvar)
 
         # integrate flow
-        zero = torch.zeros(x.shape[0], 1).to(x)
-        zT, delta_logp = self.flow(z0, zero, reverse=False)
-        logqz0 = standard_normal_logprob(z0).sum(dim=1)
-        logqzT = logqz0 + delta_logp[:, 0]
+        logqz0 = normal_logprob(z0, mu, logvar).sum(dim=1, keepdim=True)
+        zT, logqzT = self.flow(z0, logqz0, reverse=False)
 
         # get generaitve model likelihood and decode
         logpzT = standard_normal_logprob(zT).sum(dim=1)
-        x_logit = self.decoder(zT[:, :, None, None]) + self.output_bias
+        x_logit = self.decoder(zT[:, :, None, None]) + self.output_bias.to(x)
         nll = self.nll(x_logit, x).view(batch_size, -1).sum(dim=1)
         logpx = -nll
+        elbo = logpx + logpzT - logqzT[:, 0]
 
-        elbo = logpx + logpzT - logqzT
         if return_recons:
             return elbo, torch.sigmoid(x_logit)
         else:
@@ -247,9 +245,13 @@ class VAE(nn.Module):
         return torch.sigmoid(x_logit)
 
 
+def normal_logprob(z, mu, logvar):
+    return -.5 * (math.log(2. * math.pi) + logvar) - (z - mu).pow(2) / (2. * torch.exp(logvar))
+
+
 def standard_normal_logprob(z):
-    logZ = -0.5 * math.log(2 * math.pi)
-    return logZ - z.pow(2) / 2
+    zeros = torch.zeros_like(z)
+    return normal_logprob(z, zeros, zeros)
 
 
 def get_dataset(args):
