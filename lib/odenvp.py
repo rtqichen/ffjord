@@ -3,6 +3,7 @@ import torch.nn as nn
 import lib.layers as layers
 import lib.layers.diffeq_layers as diffeq_layers
 import lib.layers.wrappers.cnf_regularization as reg_lib
+from lib.spectral_norm import spectral_norm
 
 
 class ODENVP(nn.Module):
@@ -29,6 +30,7 @@ class ODENVP(nn.Module):
         alpha=0.05,
         l2_coeff=0.,
         dl2_coeff=0.,
+        spectral_norm=False,
     ):
         super(ODENVP, self).__init__()
         self.n_scale = min(n_scale, self._calc_n_scale(input_size))
@@ -44,6 +46,8 @@ class ODENVP(nn.Module):
             raise ValueError('Could not compute number of scales for input of' 'size (%d,%d,%d,%d)' % input_size)
 
         self.transforms = self._build_net(input_size)
+        if spectral_norm:
+            self._add_spectral_norm()
 
     def _build_net(self, input_size):
         _, c, h, w = input_size
@@ -87,6 +91,19 @@ class ODENVP(nn.Module):
                     acc + reg for acc, reg in zip(acc_reg_states, module.get_regularization_states())
                 )
         return sum(state * coeff for state, coeff in zip(acc_reg_states, self.regularization_coeffs))
+
+    def _add_spectral_norm(self):
+        def recursive_apply_sn(parent_module):
+            for child_name in list(parent_module._modules.keys()):
+                child_module = parent_module._modules[child_name]
+                classname = child_module.__class__.__name__
+                if classname.find('Conv') != -1 and 'weight' in child_module._parameters:
+                    del parent_module._modules[child_name]
+                    parent_module.add_module(child_name, spectral_norm(child_module, 'weight'))
+                else:
+                    recursive_apply_sn(child_module)
+
+        recursive_apply_sn(self)
 
     def _calc_n_scale(self, input_size):
         _, _, h, w = input_size

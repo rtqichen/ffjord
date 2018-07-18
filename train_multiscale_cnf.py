@@ -39,6 +39,7 @@ parser.add_argument('-bn', type=eval, default=True, choices=[True, False])
 
 parser.add_argument('-l2_coeff', type=float, default=0.)
 parser.add_argument('-dl2_coeff', type=float, default=0.)
+parser.add_argument('-spectral_norm', action='store_true')
 
 parser.add_argument('-nworkers', type=int, default=4)
 parser.add_argument('-print_freq', help='Print progress every so iterations', type=int, default=20)
@@ -166,6 +167,7 @@ model = ODENVP(
     alpha=alpha,
     l2_coeff=args.l2_coeff,
     dl2_coeff=args.dl2_coeff,
+    spectral_norm=args.spectral_norm,
 )
 prior = priors.Normal()
 logger.info(model)
