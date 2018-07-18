@@ -192,7 +192,7 @@ class ODEnet(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self, hidden_dim, flow):
+    def __init__(self, hidden_dim, flow, train_mean, alpha=.001):
         super(VAE, self).__init__()
         self.encoder = Encoder()
         self.decoder = Decoder()
@@ -202,10 +202,13 @@ class VAE(nn.Module):
         self.mu_layer = nn.Linear(dim_out, hidden_dim)
         self.logvar_layer = nn.Linear(dim_out, hidden_dim)
         self.nll = nn.BCEWithLogitsLoss(reduce=False)
+        train_mean = train_mean * (1. - 2. * alpha) + alpha  # push in from 0 and 1
+        train_mean_logit = np.log(train_mean) - np.log(1. - train_mean)
+        self.output_bias = torch.tensor(train_mean_logit[None, :, :, :])
 
     @staticmethod
     def _reparam(mu, logvar):
-        eps = torch.normal(torch.zeros_like(mu), torch.ones_like(logvar))
+        eps = torch.randn(mu.size())
         std = torch.exp(logvar / 2.)
         return mu + eps * std
 
@@ -226,7 +229,7 @@ class VAE(nn.Module):
 
         # get generaitve model likelihood and decode
         logpzT = standard_normal_logprob(zT).sum(dim=1)
-        x_logit = self.decoder(zT[:, :, None, None])
+        x_logit = self.decoder(zT[:, :, None, None]) + self.output_bias
         nll = self.nll(x_logit, x).view(batch_size, -1).sum(dim=1)
         logpx = -nll
 
@@ -238,9 +241,7 @@ class VAE(nn.Module):
 
     def sample(self, num_samples=100, z=None):
         if z is None:
-            mu = torch.zeros(num_samples, self.hidden_dim)
-            std = torch.ones(num_samples, self.hidden_dim)
-            z = torch.normal(mu, std)
+            z = torch.randn(num_samples, self.hidden_dim)
 
         x_logit = self.decoder(z[:, :, None, None])
         return torch.sigmoid(x_logit)
@@ -254,7 +255,7 @@ def standard_normal_logprob(z):
 def get_dataset(args):
     if args.data == "mnist":
         train_set, valid_set, test_set = binarized_mnist()
-        data_shape = (1, 28, 28)
+        train_mean = train_set.mean(axis=0)
     else:
         assert False
 
@@ -264,7 +265,7 @@ def get_dataset(args):
     logger.info("==>>> total training batch number: {}".format(len(train_loader)))
     logger.info("==>>> total validation batch number: {}".format(len(valid_loader)))
     logger.info("==>>> total testing batch number: {}".format(len(test_loader)))
-    return train_loader, valid_loader, test_loader, data_shape
+    return train_loader, valid_loader, test_loader, train_mean
 
 
 def regularized_model(model):
@@ -304,7 +305,8 @@ if __name__ == "__main__":
     cvt = lambda x: x.type(torch.float32).to(device)
 
     # load dataset
-    train_loader, valid_loader, test_loader, data_shape = get_dataset(args)
+    train_loader, valid_loader, test_loader, train_mean = get_dataset(args)
+    data_shape = train_mean.shape
 
     _odeint = integrate.odeint_adjoint if args.adjoint else integrate.odeint
     hidden_dims = tuple(map(int, args.dims.split(",")))
@@ -317,7 +319,7 @@ if __name__ == "__main__":
         gfunc=gfunc,
         divergence_fn=args.divergence_fn
     )
-    vae = VAE(args.hidden_dim, flow)
+    vae = VAE(args.hidden_dim, flow, train_mean=train_mean)
 
     logger.info(vae)
     logger.info("Number of trainable parameters: {}".format(count_parameters(vae)))
@@ -340,7 +342,7 @@ if __name__ == "__main__":
     vae.to(device)
 
     # For visualization.
-    fixed_z = cvt(torch.randn(100, np.prod(data_shape)))
+    fixed_z = cvt(torch.randn(100, args.hidden_dim))
     for valid_x in valid_loader:
         fixed_x = valid_x
         break
