@@ -28,7 +28,7 @@ from lib.visualize_flow import visualize_transform
 # go fast boi!!
 torch.backends.cudnn.benchmark = True
 
-parser = argparse.ArgumentParser("Continuous Normalizing Flow")
+parser = argparse.ArgumentParser("Continuous Normalizing Flow VAE")
 parser.add_argument(
     "--data", choices=["mnist", "svhn"], type=str, default="mnist"
 )
@@ -54,7 +54,7 @@ parser.add_argument("--dl2_coeff", type=float, default=0, help="Directional L2 o
 
 parser.add_argument("--begin_epoch", type=int, default=1)
 parser.add_argument("--resume", type=str, default=None)
-parser.add_argument("--save", type=str, default="experiments/cnf")
+parser.add_argument("--save", type=str, default="experiments/vae")
 parser.add_argument("--val_freq", type=int, default=1)
 parser.add_argument("--log_freq", type=int, default=10)
 parser.add_argument("--gpu", type=int, default=0)
