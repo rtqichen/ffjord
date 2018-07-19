@@ -48,6 +48,8 @@ parser.add_argument("--lr", type=float, default=1e-5)
 parser.add_argument("--adjoint", type=eval, default=True, choices=[True, False])
 parser.add_argument("--vanilla_vae", type=eval, default=False, choices=[True, False])
 
+parser.add_argument("--evaluate", type=eval, default=False, choices=[True, False])
+
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
 parser.add_argument("--dl2_coeff", type=float, default=0, help="Directional L2 on dynamics.")
@@ -61,6 +63,8 @@ parser.add_argument("--val_freq", type=int, default=1)
 parser.add_argument("--log_freq", type=int, default=10)
 parser.add_argument("--gpu", type=int, default=0)
 args = parser.parse_args()
+if args.evaluate:
+    assert args.resume is not None, "If you are evaluating, you must give me a checkpoint dummy"
 
 
 class GatedLinear(nn.Module):
@@ -362,6 +366,23 @@ if __name__ == "__main__":
                         state[k] = cvt(v)
 
     vae.to(device)
+
+    # evaluate the model and exit
+    if args.evaluate:
+        with torch.no_grad():
+            start = time.time()
+            logger.info("testing...")
+            losses = []
+            for x in test_loader:
+                x = cvt(x)
+                logpx, kl = vae(x)
+                elbo = logpx + kl
+                loss = -elbo.mean()
+                losses.append(loss.item())
+            loss = np.mean(losses)
+            logger.info(" Time {:.4f}, Elbo {:.4f}".format(time.time() - start, -loss))
+        exit()
+
 
     # For visualization.
     fixed_z = cvt(torch.randn(100, args.hidden_dim))
