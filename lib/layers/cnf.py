@@ -22,7 +22,7 @@ class CNF(nn.Module):
         self.nreg = nreg
         self.regularization_states = None
 
-    def forward(self, z, logpz=None, integration_times=None, reverse=False, atol=1e-7, rtol=1e-6):
+    def forward(self, z, logpz=None, integration_times=None, reverse=False, atol=1e-7, rtol=1e-5):
         if logpz is None:
             _logpz = torch.zeros(z.shape[0], 1).to(z)
         else:
