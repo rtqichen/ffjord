@@ -27,7 +27,7 @@ torch.backends.cudnn.benchmark = True
 
 parser = argparse.ArgumentParser("Continuous Normalizing Flow")
 parser.add_argument(
-    "--data", choices=["swissroll", "8gaussians", "pinwheel", "circles", "moons", "mnist", "svhn"], type=str, default="moons"
+    "--data", choices=["swissroll", "8gaussians", "pinwheel", "circles", "moons", "mnist", "svhn", "cifar10"], type=str, default="moons"
 )
 parser.add_argument("--dims", type=str, default="8,32,32,8")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
@@ -69,10 +69,9 @@ def add_noise(x):
     """
     [0, 1] -> [0, 255] -> add noise -> [0, 1]
     """
-    if args.add_noise:
-        noise = x.new().resize_as_(x).uniform_()
-        x = x * 255 + noise
-        x = x / 256
+    noise = x.new().resize_as_(x).uniform_()
+    x = x * 255 + noise
+    x = x / 256
     return x
 
 
@@ -87,7 +86,12 @@ def update_lr(optimizer, itr):
         param_group["lr"] = lr
 
 
-def get_dataset(args, trans=tforms.Compose([tforms.ToTensor(), add_noise, lambda x: x.view(-1)])):
+def get_dataset(args):
+    if args.add_noise:
+        trans = tforms.Compose([tforms.ToTensor(), add_noise, lambda x: x.view(-1)])
+    else:
+        trans = tforms.Compose([tforms.ToTensor(), lambda x: x.view(-1)])
+
     if args.data == "mnist":
         train_set = dset.MNIST(root="./data", train=True, transform=trans, download=True)
         test_set = dset.MNIST(root="./data", train=False, transform=trans, download=True)
