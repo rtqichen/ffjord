@@ -10,10 +10,7 @@ import numpy as np
 
 import torch
 import torch.optim as optim
-import torch.functional as F
 import torch.nn as nn
-import torchvision.datasets as dset
-import torchvision.transforms as tforms
 from torch.utils.data import Dataset
 from torchvision.utils import save_image
 
@@ -21,9 +18,7 @@ import integrate
 
 import lib.layers as layers
 import lib.regularizations as regularizations
-import lib.toy_data as toy_data
 import lib.utils as utils
-from lib.visualize_flow import visualize_transform
 
 # go fast boi!!
 torch.backends.cudnn.benchmark = True
