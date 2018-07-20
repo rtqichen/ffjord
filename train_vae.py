@@ -20,10 +20,9 @@ from torchvision.utils import save_image
 import integrate
 
 import lib.layers as layers
+from lib.layers import GatedLinear, GatedConvTranspose, GatedConv
 import lib.regularizations as regularizations
-import lib.toy_data as toy_data
 import lib.utils as utils
-from lib.visualize_flow import visualize_transform
 
 # go fast boi!!
 torch.backends.cudnn.benchmark = True
@@ -65,54 +64,6 @@ parser.add_argument("--gpu", type=int, default=0)
 args = parser.parse_args()
 if args.evaluate:
     assert args.resume is not None, "If you are evaluating, you must give me a checkpoint dummy"
-
-
-class GatedLinear(nn.Module):
-    def __init__(self, in_features, out_features):
-        super(GatedLinear, self).__init__()
-        self.layer_f = nn.Linear(in_features, out_features)
-        self.layer_g = nn.Linear(in_features, out_features)
-
-    def forward(self, x):
-            f = self.layer_f(x)
-            g = torch.sigmoid(self.layer_g(x))
-            return f * g
-
-
-class GatedConv(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, groups=1):
-        super(GatedConv, self).__init__()
-        self.layer_f = nn.Conv2d(
-            in_channels, out_channels, kernel_size,
-            stride=stride, padding=padding, dilation=1, groups=groups
-        )
-        self.layer_g = nn.Conv2d(
-            in_channels, out_channels, kernel_size,
-            stride=stride, padding=padding, dilation=1, groups=groups
-        )
-
-    def forward(self, x):
-        f = self.layer_f(x)
-        g = torch.sigmoid(self.layer_g(x))
-        return f * g
-
-
-class GatedConvTranspose(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1):
-        super(GatedConvTranspose, self).__init__()
-        self.layer_f = nn.ConvTranspose2d(
-            in_channels, out_channels, kernel_size,
-            stride=stride, padding=padding, output_padding=output_padding, groups=groups
-        )
-        self.layer_g = nn.ConvTranspose2d(
-            in_channels, out_channels, kernel_size,
-            stride=stride, padding=padding, output_padding=output_padding, groups=groups
-        )
-
-    def forward(self, x):
-        f = self.layer_f(x)
-        g = torch.sigmoid(self.layer_g(x))
-        return f * g
 
 
 def binarize(x):

@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-__all__ = ["CNF", "ODEnet", "ConcatLinear", "IgnoreLinear", "HyperLinear", "BlendLinear"]
+#__all__ = ["CNF", "ODEnet", "ConcatLinear", "IgnoreLinear", "HyperLinear", "BlendLinear"]
 
 
 def weights_init(m):
@@ -12,6 +12,54 @@ def weights_init(m):
     if classname.find('Linear') != -1:
         nn.init.constant_(m.weight, 0)
         nn.init.normal_(m.bias, 0, 0.01)
+
+
+class GatedLinear(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(GatedLinear, self).__init__()
+        self.layer_f = nn.Linear(in_features, out_features)
+        self.layer_g = nn.Linear(in_features, out_features)
+
+    def forward(self, x):
+            f = self.layer_f(x)
+            g = torch.sigmoid(self.layer_g(x))
+            return f * g
+
+
+class GatedConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, groups=1, dilation="not_used", bias="not_used"):
+        super(GatedConv, self).__init__()
+        self.layer_f = nn.Conv2d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding, dilation=1, groups=groups
+        )
+        self.layer_g = nn.Conv2d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding, dilation=1, groups=groups
+        )
+
+    def forward(self, x):
+        f = self.layer_f(x)
+        g = torch.sigmoid(self.layer_g(x))
+        return f * g
+
+
+class GatedConvTranspose(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1, dilation="not_used", bias="not_used"):
+        super(GatedConvTranspose, self).__init__()
+        self.layer_f = nn.ConvTranspose2d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding, output_padding=output_padding, groups=groups
+        )
+        self.layer_g = nn.ConvTranspose2d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding, output_padding=output_padding, groups=groups
+        )
+
+    def forward(self, x):
+        f = self.layer_f(x)
+        g = torch.sigmoid(self.layer_g(x))
+        return f * g
 
 
 class HyperLinear(nn.Module):
@@ -136,13 +184,16 @@ class IgnoreConv2d(nn.Module):
 
 class ConcatConv2d(nn.Module):
     def __init__(
-        self, input_shape, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False,
+        self, input_shape, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False, base="normal",
         **unused_kwargs
     ):
         super(ConcatConv2d, self).__init__()
         assert len(input_shape) == 3, "input_shape expected to be of (C, H, W)."
         dim_in = input_shape[0]
-        module = nn.ConvTranspose2d if transpose else nn.Conv2d
+        if base == "gated":
+            module = GatedConvTranspose if transpose else GatedConv
+        else:
+            module = nn.ConvTranspose2d if transpose else nn.Conv2d
         self._layer = module(
             dim_in + 1, dim_out, kernel_size=ksize, stride=stride, padding=padding, dilation=dilation, groups=groups,
             bias=bias
@@ -206,53 +257,97 @@ class ODEnet(nn.Module):
     def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus"):
         super(ODEnet, self).__init__()
         assert layer_type in ("ignore", "hyper", "concat", "blend")
-        assert nonlinearity in ("tanh", "relu", "softplus", "elu")
+        assert nonlinearity in ("tanh", "relu", "softplus", "elu", "gated")
+        if nonlinearity == "gated":
+            self.nonlinearity = "gated"
+            assert layer_type == "concat", "gated nonlinearity only supported by concat layers"
+            if conv:
+                # build layers and add them
+                ls = []
+                hidden_shape = input_shape
 
-        self.nonlinearity = {"tanh": F.tanh, "relu": F.relu, "softplus": F.softplus, "elu": F.elu}[nonlinearity]
-        if conv:
-            assert len(strides) == len(hidden_dims) + 1
-            base_layer = {"ignore": IgnoreConv2d, "hyper": HyperConv2d,
-                          "concat": ConcatConv2d, "blend": BlendConv2d}[layer_type]
-        else:
-            strides = [None] * (len(hidden_dims) + 1)
-            base_layer = {"ignore": IgnoreLinear, "hyper": HyperLinear, "concat": ConcatLinear,
-                          "blend": BlendLinear}[layer_type]
+                for dim_out, stride in zip(hidden_dims + (input_shape[0],), strides):
+                    if stride is None:
+                        layer_kwargs = {}
+                    elif stride == 1:
+                        layer_kwargs = {"ksize": 3, "stride": 1, "padding": 1, "transpose": False}
+                    elif stride == 2:
+                        layer_kwargs = {"ksize": 4, "stride": 2, "padding": 1, "transpose": False}
+                    elif stride == -2:
+                        layer_kwargs = {"ksize": 4, "stride": 2, "padding": 1, "transpose": True}
+                    else:
+                        raise ValueError('Unsupported stride: {}'.format(stride))
 
-        # build layers and add them
-        layers = []
-        hidden_shape = input_shape
+                    ls.append(ConcatConv2d(hidden_shape, dim_out, base="gated", **layer_kwargs))
+                    hidden_shape = list(copy.copy(hidden_shape))
+                    hidden_shape[0] = dim_out
+                    if stride == 2:
+                        hidden_shape[1], hidden_shape[2] = hidden_shape[1] // 2, hidden_shape[2] // 2
+                    elif stride == -2:
+                        hidden_shape[1], hidden_shape[2] = hidden_shape[1] * 2, hidden_shape[2] * 2
+                        
+                self.layers = nn.ModuleList(ls)
 
-        for dim_out, stride in zip(hidden_dims + (input_shape[0],), strides):
-            if stride is None:
-                layer_kwargs = {}
-            elif stride == 1:
-                layer_kwargs = {"ksize": 3, "stride": 1, "padding": 1, "transpose": False}
-            elif stride == 2:
-                layer_kwargs = {"ksize": 4, "stride": 2, "padding": 1, "transpose": False}
-            elif stride == -2:
-                layer_kwargs = {"ksize": 4, "stride": 2, "padding": 1, "transpose": True}
             else:
-                raise ValueError('Unsupported stride: {}'.format(stride))
+                ls = []
+                for i in range(len(hidden_dims)):
+                    dim_in = input_shape[0] if i == 0 else hidden_dims[i - 1]
+                    dim_out = hidden_dims[i]
+                    cur_layer = ConcatLinear([dim_in], dim_out, layer_type=GatedLinear)
+                    ls.append(cur_layer)
+                ls.append(ConcatLinear([hidden_dims[-1]], input_shape[0]))
+                self.layers = nn.ModuleList(ls)
+        else:
+            self.nonlinearity = {"tanh": F.tanh, "relu": F.relu, "softplus": F.softplus, "elu": F.elu}[nonlinearity]
+            if conv:
+                assert len(strides) == len(hidden_dims) + 1
+                base_layer = {"ignore": IgnoreConv2d, "hyper": HyperConv2d,
+                              "concat": ConcatConv2d, "blend": BlendConv2d}[layer_type]
+            else:
+                strides = [None] * (len(hidden_dims) + 1)
+                base_layer = {"ignore": IgnoreLinear, "hyper": HyperLinear, "concat": ConcatLinear,
+                              "blend": BlendLinear}[layer_type]
 
-            layers.append(base_layer(hidden_shape, dim_out, **layer_kwargs))
+            # build layers and add them
+            layers = []
+            hidden_shape = input_shape
 
-            hidden_shape = list(copy.copy(hidden_shape))
-            hidden_shape[0] = dim_out
-            if stride == 2:
-                hidden_shape[1], hidden_shape[2] = hidden_shape[1] // 2, hidden_shape[2] // 2
-            elif stride == -2:
-                hidden_shape[1], hidden_shape[2] = hidden_shape[1] * 2, hidden_shape[2] * 2
+            for dim_out, stride in zip(hidden_dims + (input_shape[0],), strides):
+                if stride is None:
+                    layer_kwargs = {}
+                elif stride == 1:
+                    layer_kwargs = {"ksize": 3, "stride": 1, "padding": 1, "transpose": False}
+                elif stride == 2:
+                    layer_kwargs = {"ksize": 4, "stride": 2, "padding": 1, "transpose": False}
+                elif stride == -2:
+                    layer_kwargs = {"ksize": 4, "stride": 2, "padding": 1, "transpose": True}
+                else:
+                    raise ValueError('Unsupported stride: {}'.format(stride))
 
-        self.layers = nn.ModuleList(layers)
+                layers.append(base_layer(hidden_shape, dim_out, **layer_kwargs))
+
+                hidden_shape = list(copy.copy(hidden_shape))
+                hidden_shape[0] = dim_out
+                if stride == 2:
+                    hidden_shape[1], hidden_shape[2] = hidden_shape[1] // 2, hidden_shape[2] // 2
+                elif stride == -2:
+                    hidden_shape[1], hidden_shape[2] = hidden_shape[1] * 2, hidden_shape[2] * 2
+
+            self.layers = nn.ModuleList(layers)
 
     def forward(self, t, y):
         dx = y
-        for l, layer in enumerate(self.layers):
-            dx = layer(t, dx)
-            # if not last layer, use nonlinearity
-            if l < len(self.layers) - 1:
-                dx = self.nonlinearity(dx)
-        return dx
+        if self.nonlinearity == "gated":
+            for layer in self.layers:
+                dx = layer(t, dx)
+            return dx
+        else:
+            for l, layer in enumerate(self.layers):
+                dx = layer(t, dx)
+                # if not last layer, use nonlinearity
+                if l < len(self.layers) - 1:
+                    dx = self.nonlinearity(dx)
+            return dx
 
 
 class ODEfunc(nn.Module):

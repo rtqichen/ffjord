@@ -33,9 +33,9 @@ parser.add_argument("--dims", type=str, default="8,32,32,8")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
 parser.add_argument("--conv", type=eval, default=False, choices=[True, False])
 
-parser.add_argument("--layer_type", type=str, default="ignore", choices=["ignore", "concat", "hyper", "blend"])
+parser.add_argument("--layer_type", type=str, default="concat", choices=["ignore", "concat", "hyper", "blend"])
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
-parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
+parser.add_argument("--nonlinearity", type=str, default="gated", choices=["tanh", "relu", "softplus", "elu", "gated"])
 
 parser.add_argument("--alpha", type=float, default=1e-6)
 parser.add_argument("--time_length", type=float, default=1.0)
@@ -208,6 +208,7 @@ if __name__ == "__main__":
         layer_type=args.layer_type,
         nonlinearity=args.nonlinearity
     )
+
     # flow chain
     chain = [
         layers.CNF(
