@@ -191,7 +191,7 @@ class VAE(nn.Module):
         if z is None:
             z = torch.randn(num_samples, self.hidden_dim)
 
-        x_logit = self.decoder(z[:, :, None, None])
+        x_logit = self.decoder(z[:, :, None, None]) + self.output_bias.to(x)
         return torch.sigmoid(x_logit)
 
     def num_evals(self):

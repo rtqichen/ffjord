@@ -17,6 +17,7 @@ from torchvision.utils import save_image
 import integrate
 
 import lib.layers as layers
+import lib.spectral_norm as spectral_norm
 import lib.regularizations as regularizations
 import lib.toy_data as toy_data
 import lib.utils as utils
@@ -63,6 +64,20 @@ parser.add_argument("--val_freq", type=int, default=1)
 parser.add_argument("--log_freq", type=int, default=10)
 parser.add_argument("--gpu", type=int, default=0)
 args = parser.parse_args()
+
+
+def _add_spectral_norm(self):
+    def recursive_apply_sn(parent_module):
+        for child_name in list(parent_module._modules.keys()):
+            child_module = parent_module._modules[child_name]
+            classname = child_module.__class__.__name__
+            if classname.find('Conv') != -1 and 'weight' in child_module._parameters:
+                del parent_module._modules[child_name]
+                parent_module.add_module(child_name, spectral_norm.spectral_norm(child_module, 'weight'))
+            else:
+                recursive_apply_sn(child_module)
+
+    recursive_apply_sn(self)
 
 
 def add_noise(x):
@@ -321,7 +336,7 @@ if __name__ == "__main__":
             if args.data == "mnist":
                 generated_samples = model(fixed_z).view(-1, 1, 28, 28)
                 save_image(generated_samples, fig_filename, nrow=10)
-            elif args.data == "svhn":
+            elif args.data == "svhn" or args.data == "cifar10":
                 generated_samples = model(fixed_z).view(-1, 3, 32, 32)
                 save_image(generated_samples, fig_filename, nrow=10)
             else:
