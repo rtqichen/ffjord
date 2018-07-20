@@ -4,8 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-__all__ = ["CNF", "ODEnet", "ConcatLinear", "IgnoreLinear", "HyperLinear", "BlendLinear"]
-
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -13,6 +11,53 @@ def weights_init(m):
         nn.init.constant_(m.weight, 0)
         nn.init.normal_(m.bias, 0, 0.01)
 
+
+class GatedLinear(nn.Module):
+    def __init__(self, in_features, out_features):
+        super(GatedLinear, self).__init__()
+        self.layer_f = nn.Linear(in_features, out_features)
+        self.layer_g = nn.Linear(in_features, out_features)
+
+    def forward(self, x):
+            f = self.layer_f(x)
+            g = torch.sigmoid(self.layer_g(x))
+            return f * g
+
+
+class GatedConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, groups=1):
+        super(GatedConv, self).__init__()
+        self.layer_f = nn.Conv2d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding, dilation=1, groups=groups
+        )
+        self.layer_g = nn.Conv2d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding, dilation=1, groups=groups
+        )
+
+    def forward(self, x):
+        f = self.layer_f(x)
+        g = torch.sigmoid(self.layer_g(x))
+        return f * g
+
+
+class GatedConvTranspose(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1):
+        super(GatedConvTranspose, self).__init__()
+        self.layer_f = nn.ConvTranspose2d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding, output_padding=output_padding, groups=groups
+        )
+        self.layer_g = nn.ConvTranspose2d(
+            in_channels, out_channels, kernel_size,
+            stride=stride, padding=padding, output_padding=output_padding, groups=groups
+        )
+
+    def forward(self, x):
+        f = self.layer_f(x)
+        g = torch.sigmoid(self.layer_g(x))
+        return f * g
 
 class HyperLinear(nn.Module):
     def __init__(self, input_shape, dim_out, hypernet_dim=8, n_hidden=1, activation=nn.Tanh, **unused_kwargs):
