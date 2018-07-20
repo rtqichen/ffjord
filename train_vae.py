@@ -28,6 +28,7 @@ parser.add_argument(
     "--data", choices=["mnist", "svhn"], type=str, default="mnist"
 )
 parser.add_argument("--dims", type=str, default="256,256")
+parser.add_argument("--amortized", type=eval, default=True)
 parser.add_argument("--hidden_dim", type=int, default=64)
 
 parser.add_argument("--layer_type", type=str, default="concat", choices=["ignore", "concat", "hyper", "blend"])
@@ -133,9 +134,40 @@ class ODEnet(nn.Module):
             dx = self.layers[-1](t, dx)
             return dx
 
+# adds amortized bias to the hidden layers
+class AmortizedODEnet(nn.Module):
+    def __init__(self, hidden_dims, nonlinearity, layer_type, input_dim):
+        super(AmortizedODEnet, self).__init__()
+        self.input_dim = input_dim
+        self.hidden_dims = hidden_dims
+        nonlinearity = {"tanh": nn.Tanh, "relu": nn.ReLU, "softplus": nn.Softplus, "elu": nn.ELU}[nonlinearity]
+        self.nonlinearity = nonlinearity()
+        base_layer = {"ignore": layers.IgnoreLinear, "hyper": layers.HyperLinear, "concat": layers.ConcatLinear,
+                      "blend": layers.BlendLinear}[layer_type]
+        ls = []
+        for i in range(len(hidden_dims)):
+            dim_in = input_dim if i == 0 else hidden_dims[i - 1]
+            dim_out = hidden_dims[i]
+            ls.append(base_layer([dim_in], dim_out))
+        ls.append(base_layer([hidden_dims[-1]], input_dim))
+        self.layers = nn.ModuleList(ls)
+
+    def forward(self, t, y):
+        y, bias_params = y[:, :self.input_dim], y[:, self.input_dim:]
+        dx = y
+        rest_bias = bias_params
+        # for each non-terminal layer apply layer and apply nonlinearity
+        for hidden_dim, layer in zip(self.hidden_dims, self.layers[:-1]):
+            this_bias, rest_bias = rest_bias[:, :hidden_dim], rest_bias[:, hidden_dim:]
+            dx = layer(t, dx) + this_bias
+            dx = self.nonlinearity(dx)
+
+        dx = self.layers[-1](t, dx) + rest_bias
+        return torch.cat([dx, torch.zeros_like(bias_params)], 1)
+
 
 class VAE(nn.Module):
-    def __init__(self, hidden_dim, flow, train_mean, alpha=.001):
+    def __init__(self, hidden_dim, flow, train_mean, alpha=.001, hidden_dims=None):
         super(VAE, self).__init__()
         self.encoder = Encoder()
         self.decoder = Decoder()
@@ -149,6 +181,11 @@ class VAE(nn.Module):
         train_mean = train_mean * (1. - 2. * alpha) + alpha  # push in from 0 and 1
         train_mean_logit = np.log(train_mean) - np.log(1. - train_mean)
         self.output_bias = torch.tensor(train_mean_logit[None, :, :, :])
+
+        if hidden_dims is not None:
+            self.amortized_flow_params = nn.Linear(dim_out, hidden_dim + int(np.sum(hidden_dims)))
+        else:
+            self.amortized_flow_params = None
 
     @staticmethod
     def _reparam(mu, logvar):
@@ -172,8 +209,14 @@ class VAE(nn.Module):
             zT = z0
             logqzT = logqz0
         # if using flow, integrate the flow to get zT and log q(zT)
-        else:
+        elif self.amortized_flow_params is None:
             zT, logqzT = self.flow(z0, logqz0, reverse=False)
+        # if amortizing flow parameters get the amortized params and hack it into the flow
+        else:
+            amortized_flow_params = self.amortized_flow_params(h)
+            z0_with_amortized_params = torch.cat([z0, amortized_flow_params], 1)
+            zT_with_amortized_params, logqzT = self.flow(z0_with_amortized_params, logqz0, reverse=False)
+            zT = zT_with_amortized_params[:, :self.hidden_dim]
 
         # get generaitve model likelihood and decode
         logpzT = standard_normal_logprob(zT).sum(dim=1)
@@ -269,7 +312,13 @@ if __name__ == "__main__":
     _odeint = integrate.odeint_adjoint if args.adjoint else integrate.odeint
     hidden_dims = tuple(map(int, args.dims.split(",")))
 
-    gfunc = ODEnet(hidden_dims, args.nonlinearity, args.layer_type, args.hidden_dim)
+    if args.amortized:
+        gfunc = AmortizedODEnet(hidden_dims, args.nonlinearity, args.layer_type, args.hidden_dim)
+        input_shape = (2 * args.hidden_dim + sum(hidden_dims),)
+    else:
+        gfunc = ODEnet(hidden_dims, args.nonlinearity, args.layer_type, args.hidden_dim)
+        input_shape = (args.hidden_dim,)
+
     if args.vanilla_vae:
         flow = None
         logger.info("Training Vanilla VAE")
@@ -277,12 +326,12 @@ if __name__ == "__main__":
         flow = layers.CNF(
             T=args.time_length,
             odeint=_odeint,
-            input_shape=(args.hidden_dim,),
+            input_shape=input_shape,
             gfunc=gfunc,
             divergence_fn=args.divergence_fn
         )
 
-    vae = VAE(args.hidden_dim, flow, train_mean=train_mean)
+    vae = VAE(args.hidden_dim, flow, train_mean=train_mean, hidden_dims=(hidden_dims if args.amortized else None))
 
     logger.info(vae)
     logger.info("Number of trainable parameters: {}".format(count_parameters(vae)))
