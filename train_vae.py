@@ -28,7 +28,7 @@ parser.add_argument(
     "--data", choices=["mnist", "svhn"], type=str, default="mnist"
 )
 parser.add_argument("--dims", type=str, default="256,256")
-parser.add_argument("--amortized", type=eval, default=True)
+parser.add_argument("--amortized", type=eval, default=False)
 parser.add_argument("--hidden_dim", type=int, default=64)
 
 parser.add_argument("--layer_type", type=str, default="concat", choices=["ignore", "concat", "hyper", "blend"])
@@ -61,6 +61,12 @@ parser.add_argument("--gpu", type=int, default=0)
 args = parser.parse_args()
 if args.evaluate:
     assert args.resume is not None, "If you are evaluating, you must give me a checkpoint dummy"
+
+if args.resume is not None:
+    checkpt = torch.load(args.resume)
+    args = checkpt['args']
+else:
+    checkpt = None
 
 
 def binarized_mnist(path="./data/binarized_mnist.npz"):
@@ -315,6 +321,7 @@ if __name__ == "__main__":
     if args.amortized:
         gfunc = AmortizedODEnet(hidden_dims, args.nonlinearity, args.layer_type, args.hidden_dim)
         input_shape = (2 * args.hidden_dim + sum(hidden_dims),)
+        logger.info("Training Amortized Flow")
     else:
         gfunc = ODEnet(hidden_dims, args.nonlinearity, args.layer_type, args.hidden_dim)
         input_shape = (args.hidden_dim,)
@@ -340,8 +347,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(vae.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # restore parameters
-    if args.resume is not None:
-        checkpt = torch.load(args.resume)
+    if checkpt is not None:
         vae.load_state_dict(checkpt["state_dict"])
         if "optim_state_dict" in checkpt.keys():
             optimizer.load_state_dict(checkpt["optim_state_dict"])
