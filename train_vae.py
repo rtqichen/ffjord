@@ -62,12 +62,6 @@ args = parser.parse_args()
 if args.evaluate:
     assert args.resume is not None, "If you are evaluating, you must give me a checkpoint dummy"
 
-if args.resume is not None:
-    checkpt = torch.load(args.resume)
-    args = checkpt['args']
-else:
-    checkpt = None
-
 
 def binarized_mnist(path="./data/binarized_mnist.npz"):
     data = np.load(path)
@@ -347,7 +341,8 @@ if __name__ == "__main__":
     optimizer = optim.Adam(vae.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # restore parameters
-    if checkpt is not None:
+    if args.resume is not None:
+        checkpt = torch.load(args.resume)
         vae.load_state_dict(checkpt["state_dict"])
         if "optim_state_dict" in checkpt.keys():
             optimizer.load_state_dict(checkpt["optim_state_dict"])
