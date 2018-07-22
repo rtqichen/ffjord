@@ -31,6 +31,7 @@ class ODENVP(nn.Module):
         l2_coeff=0.,
         dl2_coeff=0.,
         spectral_norm=False,
+        solver='dopri5',
     ):
         super(ODENVP, self).__init__()
         self.n_scale = min(n_scale, self._calc_n_scale(input_size))
@@ -39,6 +40,7 @@ class ODENVP(nn.Module):
         self.intermediate_dim = intermediate_dim
         self.squash_input = squash_input
         self.alpha = alpha
+        self.solver = solver
 
         self._create_regularization_fns(l2_coeff, dl2_coeff)
 
@@ -62,7 +64,8 @@ class ODENVP(nn.Module):
                     if self.squash_input and i == 0 else None,
                     n_resblocks=self.n_resblocks,
                     penult_multiplier=self.multiplier,
-                    cnf_regularization_fns=self.regularization_fns
+                    cnf_regularization_fns=self.regularization_fns,
+                    solver=self.solver,
                 )
             )
             c, h, w = c * 2, h // 2, w // 2
@@ -168,6 +171,7 @@ class StackedCNFLayers(layers.SequentialFlow):
         bn=True,
         bn_lag=0.,
         cnf_regularization_fns=None,
+        solver='dopri5',
     ):
         chain = []
         if init_layer is not None:
@@ -180,15 +184,15 @@ class StackedCNFLayers(layers.SequentialFlow):
             c, h, w = initial_size
             after_squeeze_size = c * 4, h // 2, w // 2
             chain += [
-                layers.CNF(_make_odefunc(initial_size), cnf_regularization_fns),
+                layers.CNF(_make_odefunc(initial_size), cnf_regularization_fns, solver=solver),
                 layers.MovingBatchNorm2d(initial_size[0], bn_lag=bn_lag),
                 layers.SqueezeLayer(2),
-                layers.CNF(_make_odefunc(after_squeeze_size), cnf_regularization_fns),
+                layers.CNF(_make_odefunc(after_squeeze_size), cnf_regularization_fns, solver=solver),
                 layers.MovingBatchNorm2d(after_squeeze_size[0], bn_lag=bn_lag),
             ]
         else:
             chain += [
-                layers.CNF(_make_odefunc(initial_size, penult_multiplier), cnf_regularization_fns),
+                layers.CNF(_make_odefunc(initial_size, penult_multiplier), cnf_regularization_fns, solver=solver),
                 layers.MovingBatchNorm2d(initial_size[0], bn_lag=bn_lag)
             ]
 

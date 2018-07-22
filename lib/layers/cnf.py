@@ -9,7 +9,7 @@ __all__ = ["CNF"]
 
 
 class CNF(nn.Module):
-    def __init__(self, odefunc, regularization_fns=None):
+    def __init__(self, odefunc, regularization_fns=None, solver='dopri5'):
         super(CNF, self).__init__()
         self.integration_times = nn.Parameter(torch.tensor([0.0, 0.3]))
 
@@ -21,8 +21,9 @@ class CNF(nn.Module):
         self.odefunc = odefunc
         self.nreg = nreg
         self.regularization_states = None
+        self.solver = solver
 
-    def forward(self, z, logpz=None, integration_times=None, reverse=False, atol=1e-7, rtol=1e-5):
+    def forward(self, z, logpz=None, integration_times=None, reverse=False, atol=1e-6, rtol=1e-5):
         if logpz is None:
             _logpz = torch.zeros(z.shape[0], 1).to(z)
         else:
@@ -40,8 +41,7 @@ class CNF(nn.Module):
         reg_states = tuple(torch.zeros(1).to(z) for _ in range(self.nreg))
 
         state_t = odeint(
-            self.odefunc, (z, _logpz) + reg_states,
-            integration_times.to(z), atol=atol, rtol=rtol, method="dopri5", options={"max_num_steps": 2**31 - 1}
+            self.odefunc, (z, _logpz) + reg_states, integration_times.to(z), atol=atol, rtol=rtol, method=self.solver
         )
 
         if len(integration_times) == 2:

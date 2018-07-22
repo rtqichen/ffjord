@@ -21,6 +21,8 @@ parser.add_argument('-dataroot', type=str, default='data')
 parser.add_argument('-imagesize', type=int, default=32)
 parser.add_argument('-noise', type=eval, default=True, choices=[True, False])
 
+parser.add_argument('-solver', type=str, default='dopri5', choices=['dopri5', 'bdf'])
+
 parser.add_argument('-nepochs', help='Number of epochs for training', type=int, default=200)
 parser.add_argument('-batchsize', help='Minibatch size', type=int, default=100)
 parser.add_argument('-lr', help='Learning rate', type=float, default=1e-3)
@@ -168,6 +170,7 @@ model = ODENVP(
     l2_coeff=args.l2_coeff,
     dl2_coeff=args.dl2_coeff,
     spectral_norm=args.spectral_norm,
+    solver=args.solver,
 )
 prior = priors.Normal()
 logger.info(model)
