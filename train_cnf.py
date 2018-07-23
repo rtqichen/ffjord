@@ -23,13 +23,15 @@ parser.add_argument("--dims", type=str, default="8,32,32,8")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
 parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
 
-parser.add_argument("--layer_type", type=str, default="ignore", choices=["ignore", "concat", "hyper", "blend"])
+parser.add_argument(
+    "--layer_type", type=str, default="ignore", choices=["ignore", "concat", "concatcoord", "hyper", "blend"]
+)
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
 
 parser.add_argument("--imagesize", type=int, default=None)
 parser.add_argument("--alpha", type=float, default=1e-6)
-parser.add_argument("--time_length", type=float, default=1.0)
+parser.add_argument("--time_length", type=float, default=None)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
 parser.add_argument("--data_size", type=int, default=10000)
@@ -45,6 +47,7 @@ parser.add_argument("--logit", type=eval, default=True, choices=[True, False])
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
 parser.add_argument("--dl2_coeff", type=float, default=0, help="Directional L2 on dynamics.")
+parser.add_argument('-spectral_norm', action='store_true')
 
 parser.add_argument("--begin_epoch", type=int, default=1)
 parser.add_argument("--resume", type=str, default=None)
@@ -54,8 +57,18 @@ parser.add_argument("--log_freq", type=int, default=10)
 parser.add_argument("--gpu", type=int, default=0)
 args = parser.parse_args()
 
+# logger
+utils.makedirs(args.save)
+logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
 
-def _add_spectral_norm(self):
+if args.layer_type == "blend":
+    logger.info("!! Setting time_length from None to 1.0 due to use of Blend layers.")
+    args.time_length = 1.0
+
+logger.info(args)
+
+
+def _add_spectral_norm(model):
     def recursive_apply_sn(parent_module):
         for child_name in list(parent_module._modules.keys()):
             child_module = parent_module._modules[child_name]
@@ -66,7 +79,7 @@ def _add_spectral_norm(self):
             else:
                 recursive_apply_sn(child_module)
 
-    recursive_apply_sn(self)
+    recursive_apply_sn(model)
 
 
 def add_noise(x):
@@ -163,27 +176,6 @@ def compute_bits_per_dim(x, model):
     return bits_per_dim, torch.mean(logpx_logit)
 
 
-# def regularized_model(model):
-#     dict_of_regularizations = {}
-#     if args.l2_coeff != 0:
-#         dict_of_regularizations[regularizations.L2Regularization] = args.l2_coeff
-#     if args.dl2_coeff != 0:
-#         dict_of_regularizations[regularizations.DirectionalL2Regularization] = args.dl2_coeff
-#
-#     for layer in model.chain:
-#         if isinstance(layer, layers.CNF):
-#             layer.odefunc = regularizations.RegularizationsContainer(layer.odefunc, dict_of_regularizations)
-#     return model
-#
-#
-# def get_regularization(model):
-#     reg_loss = 0
-#     for layer in model.chain:
-#         if isinstance(layer, layers.CNF):
-#             reg_loss += layer.odefunc.regularization_loss
-#     return reg_loss
-
-
 def count_nfe(model):
     num_evals = 0
     for layer in model.chain:
@@ -197,11 +189,6 @@ def count_parameters(model):
 
 
 if __name__ == "__main__":
-
-    # logger
-    utils.makedirs(args.save)
-    logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
-    logger.info(args)
 
     # get deivce
     device = torch.device("cuda:" + str(args.gpu) if torch.cuda.is_available() else "cpu")
@@ -229,6 +216,9 @@ if __name__ == "__main__":
     if args.logit:
         chain.append(layers.SigmoidTransform(alpha=args.alpha))
     model = layers.SequentialFlow(chain)
+
+    if args.spectral_norm:
+        _add_spectral_norm(model)
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
