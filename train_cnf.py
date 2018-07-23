@@ -24,18 +24,16 @@ from lib.visualize_flow import visualize_transform
 torch.backends.cudnn.benchmark = True
 
 parser = argparse.ArgumentParser("Continuous Normalizing Flow")
-parser.add_argument(
-    "--data", choices=["swissroll", "8gaussians", "pinwheel", "circles", "moons", "mnist", "svhn", "cifar10"], type=str,
-    default="moons"
-)
+parser.add_argument("--data", choices=["mnist", "svhn", "cifar10"], type=str, default="mnist")
 parser.add_argument("--dims", type=str, default="8,32,32,8")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
-parser.add_argument("--conv", type=eval, default=False, choices=[True, False])
+parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
 
 parser.add_argument("--layer_type", type=str, default="ignore", choices=["ignore", "concat", "hyper", "blend"])
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
 
+parser.add_argument("--imagesize", type=int, default=None)
 parser.add_argument("--alpha", type=float, default=1e-6)
 parser.add_argument("--time_length", type=float, default=1.0)
 
@@ -81,9 +79,10 @@ def add_noise(x):
     """
     [0, 1] -> [0, 255] -> add noise -> [0, 1]
     """
-    noise = x.new().resize_as_(x).uniform_()
-    x = x * 255 + noise
-    x = x / 256
+    if args.add_noise:
+        noise = x.new().resize_as_(x).uniform_()
+        x = x * 255 + noise
+        x = x / 256
     return x
 
 
@@ -99,30 +98,44 @@ def update_lr(optimizer, itr):
 
 
 def get_dataset(args):
-    if args.add_noise:
-        trans = tforms.Compose([tforms.ToTensor(), add_noise])
-    else:
-        trans = tforms.Compose([tforms.ToTensor()])
+    trans = lambda im_size: tforms.Compose([tforms.Resize(im_size), tforms.ToTensor(), add_noise])
 
     if args.data == "mnist":
-        train_set = dset.MNIST(root="./data", train=True, transform=trans, download=True)
-        test_set = dset.MNIST(root="./data", train=False, transform=trans, download=True)
-        data_shape = (1, 28, 28) if args.conv else (784,)
+        im_dim = 1
+        im_size = 28 if args.imagesize is None else args.imagesize
+        train_set = dset.MNIST(root="./data", train=True, transform=trans(im_size), download=True)
+        test_set = dset.MNIST(root="./data", train=False, transform=trans(im_size), download=True)
     elif args.data == "svhn":
-        train_set = dset.SVHN(root="./data", split="train", transform=trans, download=True)
-        test_set = dset.SVHN(root="./data", split="test", transform=trans, download=True)
-        data_shape = (3, 32, 32) if args.conv else (3 * 32 * 32,)
+        im_dim = 3
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dset.SVHN(root="./data", split="train", transform=trans(im_size), download=True)
+        test_set = dset.SVHN(root="./data", split="test", transform=trans(im_size), download=True)
     elif args.data == "cifar10":
-        train_set = dset.CIFAR10(root="./data", train=True, transform=trans, download=True)
-        test_set = dset.CIFAR10(root="./data", train=False, transform=trans, download=True)
-        data_shape = (3, 32, 32) if args.conv else (3 * 32 * 32,)
-    else:
-        args.conv = False  # conv not supported for 2D datasets.
-        dataset = toy_data.inf_train_gen(args.data, batch_size=args.data_size)
-        dataset = [(d, 0) for d in dataset]  # add dummy labels
-        num_train = int(args.data_size * .9)
-        train_set, test_set = dataset[:num_train], dataset[num_train:]
-        data_shape = (2,)
+        im_dim = 3
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dset.CIFAR10(root="./data", train=True, transform=trans(im_size), download=True)
+        test_set = dset.CIFAR10(root="./data", train=False, transform=trans(im_size), download=True)
+    elif args.dataset == 'celeba':
+        im_dim = 3
+        im_size = 64 if args.imagesize is None else args.imagesize
+        train_set = dset.CelebA(
+            train=True, transform=tforms.Compose([
+                tforms.ToPILImage(),
+                tforms.Resize(im_size),
+                tforms.RandomHorizontalFlip(),
+                tforms.ToTensor(),
+                add_noise,
+            ])
+        )
+        test_set = dset.CelebA(
+            train=False, transform=tforms.Compose([
+                tforms.ToPILImage(),
+                tforms.Resize(args.imagesize),
+                tforms.ToTensor(),
+                add_noise,
+            ])
+        )
+    data_shape = (im_dim, im_size, im_size)
 
     train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
@@ -220,7 +233,7 @@ if __name__ == "__main__":
         )
     ]
     if args.logit:
-        chain.append(layers.LogitTransform(alpha=args.alpha))
+        chain.append(layers.SigmoidTransform(alpha=args.alpha))
     model = layers.SequentialFlow(chain)
 
     logger.info(model)
@@ -258,6 +271,9 @@ if __name__ == "__main__":
             start = time.time()
             update_lr(optimizer, itr)
             optimizer.zero_grad()
+
+            if not args.conv:
+                x = x.view(x.shape[0], -1)
 
             # cast data and move to device
             x = cvt(x)
@@ -315,13 +331,5 @@ if __name__ == "__main__":
         with torch.no_grad():
             fig_filename = os.path.join(args.save, "figs", "{:04d}.jpg".format(epoch))
             utils.makedirs(os.path.dirname(fig_filename))
-            if args.data in ["mnist", "svhn", "cifar10"]:
-                generated_samples = model(fixed_z).view(-1, *data_shape)
-                save_image(generated_samples, fig_filename, nrow=10)
-            else:
-                generated_samples = toy_data.inf_train_gen(args.data, batch_size=10000)
-                plt.figure(figsize=(9, 3))
-                visualize_transform(
-                    generated_samples, torch.randn, standard_normal_logprob, model, samples=True, device=device
-                )
-                plt.savefig(fig_filename)
+            generated_samples = model(fixed_z).view(-1, *data_shape)
+            save_image(generated_samples, fig_filename, nrow=10)
