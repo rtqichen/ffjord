@@ -14,11 +14,8 @@ import torchvision.datasets as dset
 import torchvision.transforms as tforms
 from torchvision.utils import save_image
 
-import integrate
-
 import lib.layers as layers
 import lib.spectral_norm as spectral_norm
-import lib.regularizations as regularizations
 import lib.toy_data as toy_data
 import lib.utils as utils
 from lib.visualize_flow import visualize_transform
@@ -28,7 +25,8 @@ torch.backends.cudnn.benchmark = True
 
 parser = argparse.ArgumentParser("Continuous Normalizing Flow")
 parser.add_argument(
-    "--data", choices=["swissroll", "8gaussians", "pinwheel", "circles", "moons", "mnist", "svhn", "cifar10"], type=str, default="moons"
+    "--data", choices=["swissroll", "8gaussians", "pinwheel", "circles", "moons", "mnist", "svhn", "cifar10"], type=str,
+    default="moons"
 )
 parser.add_argument("--dims", type=str, default="8,32,32,8")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
@@ -49,7 +47,6 @@ parser.add_argument("--lr_min", type=float, default=1e-3)
 parser.add_argument("--lr_interval", type=float, default=2000)
 parser.add_argument("--weight_decay", type=float, default=1e-6)
 
-parser.add_argument("--adjoint", type=eval, default=True, choices=[True, False])
 parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
 parser.add_argument("--logit", type=eval, default=True, choices=[True, False])
 
@@ -103,31 +100,22 @@ def update_lr(optimizer, itr):
 
 def get_dataset(args):
     if args.add_noise:
-        trans = tforms.Compose([tforms.ToTensor(), add_noise, lambda x: x.view(-1)])
+        trans = tforms.Compose([tforms.ToTensor(), add_noise])
     else:
-        trans = tforms.Compose([tforms.ToTensor(), lambda x: x.view(-1)])
+        trans = tforms.Compose([tforms.ToTensor()])
 
     if args.data == "mnist":
         train_set = dset.MNIST(root="./data", train=True, transform=trans, download=True)
         test_set = dset.MNIST(root="./data", train=False, transform=trans, download=True)
-        if args.conv:
-            data_shape = (1, 28, 28)
-        else:
-            data_shape = (784,)
+        data_shape = (1, 28, 28) if args.conv else (784,)
     elif args.data == "svhn":
         train_set = dset.SVHN(root="./data", split="train", transform=trans, download=True)
         test_set = dset.SVHN(root="./data", split="test", transform=trans, download=True)
-        if args.conv:
-            data_shape = (3, 32, 32)
-        else:
-            data_shape = (3 * 32 * 32,)
+        data_shape = (3, 32, 32) if args.conv else (3 * 32 * 32,)
     elif args.data == "cifar10":
         train_set = dset.CIFAR10(root="./data", train=True, transform=trans, download=True)
         test_set = dset.CIFAR10(root="./data", train=False, transform=trans, download=True)
-        if args.conv:
-            data_shape = (3, 32, 32)
-        else:
-            data_shape = (3 * 32 * 32,)
+        data_shape = (3, 32, 32) if args.conv else (3 * 32 * 32,)
     else:
         args.conv = False  # conv not supported for 2D datasets.
         dataset = toy_data.inf_train_gen(args.data, batch_size=args.data_size)
@@ -147,6 +135,8 @@ def compute_bits_per_dim(x, model):
 
     zero = torch.zeros(x.shape[0], 1).to(x)
 
+    assert args.logit, "logit=False not supported"
+
     # preprocessing layer
     logit_x, delta_logpx_logit_tranform = model.chain[-1](x, zero, reverse=True)
 
@@ -154,7 +144,7 @@ def compute_bits_per_dim(x, model):
     z, delta_logp = model(logit_x, zero, reverse=True, inds=range(len(model.chain) - 2, -1, -1))
 
     # compute log p(z)
-    logpz = standard_normal_logprob(z).sum(1, keepdim=True)
+    logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)
 
     # compute log p(x)
     logpx_logit = logpz - delta_logp
@@ -166,25 +156,25 @@ def compute_bits_per_dim(x, model):
     return bits_per_dim, torch.mean(logpx_logit)
 
 
-def regularized_model(model):
-    dict_of_regularizations = {}
-    if args.l2_coeff != 0:
-        dict_of_regularizations[regularizations.L2Regularization] = args.l2_coeff
-    if args.dl2_coeff != 0:
-        dict_of_regularizations[regularizations.DirectionalL2Regularization] = args.dl2_coeff
-
-    for layer in model.chain:
-        if isinstance(layer, layers.CNF):
-            layer.odefunc = regularizations.RegularizationsContainer(layer.odefunc, dict_of_regularizations)
-    return model
-
-
-def get_regularization(model):
-    reg_loss = 0
-    for layer in model.chain:
-        if isinstance(layer, layers.CNF):
-            reg_loss += layer.odefunc.regularization_loss
-    return reg_loss
+# def regularized_model(model):
+#     dict_of_regularizations = {}
+#     if args.l2_coeff != 0:
+#         dict_of_regularizations[regularizations.L2Regularization] = args.l2_coeff
+#     if args.dl2_coeff != 0:
+#         dict_of_regularizations[regularizations.DirectionalL2Regularization] = args.dl2_coeff
+#
+#     for layer in model.chain:
+#         if isinstance(layer, layers.CNF):
+#             layer.odefunc = regularizations.RegularizationsContainer(layer.odefunc, dict_of_regularizations)
+#     return model
+#
+#
+# def get_regularization(model):
+#     reg_loss = 0
+#     for layer in model.chain:
+#         if isinstance(layer, layers.CNF):
+#             reg_loss += layer.odefunc.regularization_loss
+#     return reg_loss
 
 
 def count_nfe(model):
@@ -213,28 +203,20 @@ if __name__ == "__main__":
     # load dataset
     train_loader, test_loader, data_shape = get_dataset(args)
 
-    _odeint = integrate.odeint_adjoint if args.adjoint else integrate.odeint
     hidden_dims = tuple(map(int, args.dims.split(",")))
     strides = tuple(map(int, args.strides.split(",")))
 
     # build model
     # neural net that parameterizes the gradient of the flow
     gfunc = layers.ODEnet(
-        hidden_dims=hidden_dims,
-        input_shape=data_shape,
-        strides=strides,
-        conv=args.conv,
-        layer_type=args.layer_type,
+        hidden_dims=hidden_dims, input_shape=data_shape, strides=strides, conv=args.conv, layer_type=args.layer_type,
         nonlinearity=args.nonlinearity
     )
     # flow chain
     chain = [
         layers.CNF(
+            odefunc=layers.ODEfunc(input_shape=data_shape, diffeq=gfunc, divergence_fn=args.divergence_fn),
             T=args.time_length,
-            odeint=_odeint,
-            input_shape=data_shape,
-            gfunc=gfunc,
-            divergence_fn=args.divergence_fn,
         )
     ]
     if args.logit:
@@ -262,7 +244,7 @@ if __name__ == "__main__":
     model.to(device)
 
     # For visualization.
-    fixed_z = cvt(torch.randn(100, np.prod(data_shape)))
+    fixed_z = cvt(torch.randn(100, *data_shape))
 
     time_meter = utils.RunningAverageMeter(0.97)
     loss_meter = utils.RunningAverageMeter(0.97)
@@ -333,11 +315,8 @@ if __name__ == "__main__":
         with torch.no_grad():
             fig_filename = os.path.join(args.save, "figs", "{:04d}.jpg".format(epoch))
             utils.makedirs(os.path.dirname(fig_filename))
-            if args.data == "mnist":
-                generated_samples = model(fixed_z).view(-1, 1, 28, 28)
-                save_image(generated_samples, fig_filename, nrow=10)
-            elif args.data == "svhn" or args.data == "cifar10":
-                generated_samples = model(fixed_z).view(-1, 3, 32, 32)
+            if args.data in ["mnist", "svhn", "cifar10"]:
+                generated_samples = model(fixed_z).view(-1, *data_shape)
                 save_image(generated_samples, fig_filename, nrow=10)
             else:
                 generated_samples = toy_data.inf_train_gen(args.data, batch_size=10000)

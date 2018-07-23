@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+_DEFAULT_ALPHA = 1e-6
+
 
 class LogitTransform(nn.Module):
     """
@@ -11,30 +13,47 @@ class LogitTransform(nn.Module):
     x = logit(a + (1 - 2a)*y)
     """
 
-    def __init__(self, alpha=0.05):
+    def __init__(self, alpha=_DEFAULT_ALPHA):
         nn.Module.__init__(self)
         self.alpha = alpha
 
     def forward(self, x, logpx=None, reverse=False):
         if reverse:
-            return self._logit(x, logpx)
+            return _sigmoid(x, logpx, self.alpha)
         else:
-            return self._sigmoid(x, logpx)
+            return _logit(x, logpx, self.alpha)
 
-    def _logit(self, x, logpx=None):
-        s = self.alpha + (1 - 2 * self.alpha) * x
-        y = torch.log(s) - torch.log(1 - s)
-        if logpx is None:
-            return y
-        return y, logpx - self._logdetgrad(x).view(x.size(0), -1).sum(1, keepdim=True)
 
-    def _sigmoid(self, y, logpy=None):
-        x = (F.sigmoid(y) - self.alpha) / (1 - 2 * self.alpha)
-        if logpy is None:
-            return x
-        return x, logpy + self._logdetgrad(x).view(x.size(0), -1).sum(1, keepdim=True)
+class SigmoidTransform(nn.Module):
+    """Reverse of LogitTransform."""
 
-    def _logdetgrad(self, x):
-        s = self.alpha + (1 - 2 * self.alpha) * x
-        logdetgrad = -torch.log(s - s * s) + math.log(1 - 2 * self.alpha)
-        return logdetgrad
+    def __init__(self, alpha=_DEFAULT_ALPHA):
+        nn.Module.__init__(self)
+        self.alpha = alpha
+
+    def forward(self, x, logpx=None, reverse=False):
+        if reverse:
+            return _logit(x, logpx, self.alpha)
+        else:
+            return _sigmoid(x, logpx, self.alpha)
+
+
+def _logit(x, logpx=None, alpha=_DEFAULT_ALPHA):
+    s = alpha + (1 - 2 * alpha) * x
+    y = torch.log(s) - torch.log(1 - s)
+    if logpx is None:
+        return y
+    return y, logpx - _logdetgrad(x).view(x.size(0), -1).sum(1, keepdim=True)
+
+
+def _sigmoid(y, logpy=None, alpha=_DEFAULT_ALPHA):
+    x = (F.sigmoid(y) - alpha) / (1 - 2 * alpha)
+    if logpy is None:
+        return x
+    return x, logpy + _logdetgrad(x).view(x.size(0), -1).sum(1, keepdim=True)
+
+
+def _logdetgrad(x, alpha=_DEFAULT_ALPHA):
+    s = alpha + (1 - 2 * alpha) * x
+    logdetgrad = -torch.log(s - s * s) + math.log(1 - 2 * alpha)
+    return logdetgrad

@@ -10,13 +10,13 @@ import numpy as np
 import torch
 import torch.optim as optim
 import torch.nn as nn
-from torch.utils.data import Dataset
 from torchvision.utils import save_image
 
 import integrate
 
 import lib.layers as layers
-from lib.layers import GatedConv, GatedConvTranspose, GatedLinear
+import lib.layers.diffeq_layers as diffeq_layers
+from lib.layers.diffeq_layers import GatedConv, GatedConvTranspose, GatedLinear
 import lib.regularizations as regularizations
 import lib.utils as utils
 
@@ -24,15 +24,15 @@ import lib.utils as utils
 torch.backends.cudnn.benchmark = True
 
 parser = argparse.ArgumentParser("Continuous Normalizing Flow VAE")
-parser.add_argument(
-    "--data", choices=["mnist", "svhn"], type=str, default="mnist"
-)
+parser.add_argument("--data", choices=["mnist", "svhn"], type=str, default="mnist")
 parser.add_argument("--dims", type=str, default="256,256")
 parser.add_argument("--hidden_dim", type=int, default=64)
 
 parser.add_argument("--layer_type", type=str, default="concat", choices=["ignore", "concat", "hyper", "blend"])
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
-parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu", "gated"])
+parser.add_argument(
+    "--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu", "gated"]
+)
 
 parser.add_argument("--time_length", type=float, default=1.0)
 
@@ -70,13 +70,13 @@ def binarized_mnist(path="./data/binarized_mnist.npz"):
 
 def Encoder():
     return nn.Sequential(
-        GatedConv(1,  32,  5, 1, 2),
-        GatedConv(32, 32,  5, 2, 2),
-        GatedConv(32, 64,  5, 1, 2),
-        GatedConv(64, 64,  5, 2, 2),
-        GatedConv(64, 64,  5, 1, 2),
-        GatedConv(64, 64,  5, 1, 2),
-        GatedConv(64, 256, 7, 1, 0)
+        GatedConv(1, 32, 5, 1, 2),
+        GatedConv(32, 32, 5, 2, 2),
+        GatedConv(32, 64, 5, 1, 2),
+        GatedConv(64, 64, 5, 2, 2),
+        GatedConv(64, 64, 5, 1, 2),
+        GatedConv(64, 64, 5, 1, 2),
+        GatedConv(64, 256, 7, 1, 0),
     )
 
 
@@ -88,7 +88,7 @@ def Decoder():
         GatedConvTranspose(32, 32, 5, 1, 2),
         GatedConvTranspose(32, 32, 5, 2, 2, 1),
         GatedConvTranspose(32, 32, 5, 1, 2),
-        GatedConvTranspose(32, 1,  1, 1, 0),
+        GatedConvTranspose(32, 1, 1, 1, 0),
     )
 
 
@@ -102,21 +102,25 @@ class ODEnet(nn.Module):
             for i in range(len(hidden_dims)):
                 dim_in = input_dim if i == 0 else hidden_dims[i - 1]
                 dim_out = hidden_dims[i]
-                cur_layer = layers.ConcatLinear([dim_in], dim_out, layer_type=GatedLinear)
+                cur_layer = diffeq_layers.ConcatLinear([dim_in], dim_out, layer_type=GatedLinear)
                 ls.append(cur_layer)
-            ls.append(layers.ConcatLinear([hidden_dims[-1]], input_dim))
+            ls.append(diffeq_layers.ConcatLinear([hidden_dims[-1]], input_dim))
             self.layers = nn.ModuleList(ls)
         else:
             nonlinearity = {"tanh": nn.Tanh, "relu": nn.ReLU, "softplus": nn.Softplus, "elu": nn.ELU}[nonlinearity]
             self.nonlinearity = nonlinearity()
-            base_layer = {"ignore": layers.IgnoreLinear, "hyper": layers.HyperLinear, "concat": layers.ConcatLinear,
-                          "blend": layers.BlendLinear}[layer_type]
+            base_layer = {
+                "ignore": diffeq_layers.IgnoreLinear,
+                "hyper": diffeq_layers.HyperLinear,
+                "concat": diffeq_layers.ConcatLinear,
+                "blend": diffeq_layers.BlendLinear,
+            }[layer_type]
             ls = []
             for i in range(len(hidden_dims)):
                 dim_in = input_dim if i == 0 else hidden_dims[i - 1]
                 dim_out = hidden_dims[i]
-                ls.append(base_layer([dim_in], dim_out))
-            ls.append(base_layer([hidden_dims[-1]], input_dim))
+                ls.append(base_layer(dim_in, dim_out))
+            ls.append(base_layer(hidden_dims[-1], input_dim))
             self.layers = nn.ModuleList(ls)
 
     def forward(self, t, y):
@@ -266,7 +270,6 @@ if __name__ == "__main__":
     train_loader, valid_loader, test_loader, train_mean = get_dataset(args)
     data_shape = train_mean.shape
 
-    _odeint = integrate.odeint_adjoint if args.adjoint else integrate.odeint
     hidden_dims = tuple(map(int, args.dims.split(",")))
 
     gfunc = ODEnet(hidden_dims, args.nonlinearity, args.layer_type, args.hidden_dim)
@@ -275,11 +278,8 @@ if __name__ == "__main__":
         logger.info("Training Vanilla VAE")
     else:
         flow = layers.CNF(
+            odefunc=layers.ODEfunc(input_shape=data_shape, diffeq=gfunc, divergence_fn=args.divergence_fn),
             T=args.time_length,
-            odeint=_odeint,
-            input_shape=(args.hidden_dim,),
-            gfunc=gfunc,
-            divergence_fn=args.divergence_fn
         )
 
     vae = VAE(args.hidden_dim, flow, train_mean=train_mean)
@@ -320,7 +320,6 @@ if __name__ == "__main__":
             logger.info(" Time {:.4f}, Elbo {:.4f}".format(time.time() - start, -loss))
         exit()
 
-
     # For visualization.
     fixed_z = cvt(torch.randn(100, args.hidden_dim))
     for valid_x in valid_loader:
@@ -355,9 +354,10 @@ if __name__ == "__main__":
 
             if itr % args.log_freq == 0:
                 logger.info(
-                    "Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.4f}({:.4f}) | Steps {:.0f}({:.2f}) | KL-Weight {}".format(
-                        itr, time_meter.val, time_meter.avg, loss_meter.val,
-                        loss_meter.avg, steps_meter.val, steps_meter.avg, kl_weight
+                    "Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.4f}({:.4f}) | Steps {:.0f}({:.2f}) | KL-Weight {}".
+                    format(
+                        itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, steps_meter.val,
+                        steps_meter.avg, kl_weight
                     )
                 )
 
@@ -376,10 +376,7 @@ if __name__ == "__main__":
                     loss = -elbo.mean()
                     losses.append(loss.item())
                 loss = np.mean(losses)
-                logger.info(
-                    "Epoch {:04d} | Time {:.4f}, Elbo {:.4f}".
-                    format(epoch, time.time() - start, -loss)
-                )
+                logger.info("Epoch {:04d} | Time {:.4f}, Elbo {:.4f}".format(epoch, time.time() - start, -loss))
                 if loss < best_loss:
                     best_loss = loss
                     utils.makedirs(args.save)
@@ -406,4 +403,3 @@ if __name__ == "__main__":
                 _, _, recons = vae(x, return_recons=True)
                 save_image(recons, recons_filename, nrow=10)
                 save_image(fixed_x, orig_filename, nrow=10)
-
