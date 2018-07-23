@@ -1,7 +1,3 @@
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
 import argparse
 import os
 import time
@@ -16,9 +12,7 @@ from torchvision.utils import save_image
 
 import lib.layers as layers
 import lib.spectral_norm as spectral_norm
-import lib.toy_data as toy_data
 import lib.utils as utils
-from lib.visualize_flow import visualize_transform
 
 # go fast boi!!
 torch.backends.cudnn.benchmark = True
