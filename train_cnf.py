@@ -44,7 +44,7 @@ parser.add_argument("--lr_interval", type=float, default=2000)
 parser.add_argument("--weight_decay", type=float, default=1e-6)
 
 parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
-parser.add_argument("--logit", type=eval, default=True, choices=[True, False])
+parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
 
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
@@ -140,16 +140,13 @@ def get_dataset(args):
 
 
 def compute_bits_per_dim(x, model, regularization_coeffs=None):
-
     zero = torch.zeros(x.shape[0], 1).to(x)
 
-    assert args.logit, "logit=False not supported"
-
     # preprocessing layer
-    logit_x, delta_logpx_logit_tranform = model.chain[-1](x, zero, reverse=True)
+    logit_x, delta_logpx_logit_tranform = model.chain[0](x, zero)
 
     # the rest of the layers
-    z, delta_logp = model(logit_x, zero, reverse=True, inds=range(len(model.chain) - 2, -1, -1))
+    z, delta_logp = model(logit_x, zero, inds=range(1, len(model.chain)))
 
     # compute log p(z)
     logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)
@@ -158,12 +155,11 @@ def compute_bits_per_dim(x, model, regularization_coeffs=None):
     logpx_logit = logpz - delta_logp
     logpx = logpx_logit - delta_logpx_logit_tranform
 
-    logpx_per_dim = torch.mean(logpx) / (x.nelement() / x.shape[0])  # averaged over batches
+    logpx_per_dim = torch.sum(logpx) / x.nelement()  # averaged over batches
     bits_per_dim = -(logpx_per_dim - np.log(256)) / np.log(2)
 
     if regularization_coeffs:
-        # take negative because during training, time is reversed.
-        regularization = -get_regularization(model, regularization_coeffs)
+        regularization = get_regularization(model, regularization_coeffs)
     else:
         regularization = torch.tensor(0.).to(bits_per_dim)
 
@@ -236,22 +232,22 @@ if __name__ == "__main__":
     # build model
     regularization_fns, regularization_coeffs = create_regularization_fns()
 
-    # neural net that parameterizes the gradient of the flow
-    gfunc = layers.ODEnet(
+    # neural net that parameterizes the velocity field
+    gfunc = lambda: layers.ODEnet(
         hidden_dims=hidden_dims, input_shape=data_shape, strides=strides, conv=args.conv, layer_type=args.layer_type,
         nonlinearity=args.nonlinearity
     )
-    # flow chain
     chain = [
+        layers.LogitTransform(alpha=args.alpha),
         layers.CNF(
-            odefunc=layers.ODEfunc(input_shape=data_shape, diffeq=gfunc, divergence_fn=args.divergence_fn),
+            odefunc=layers.ODEfunc(input_shape=data_shape, diffeq=gfunc(), divergence_fn=args.divergence_fn),
             T=args.time_length,
             regularization_fns=regularization_fns,
             solver=args.solver,
         )
     ]
-    if args.logit:
-        chain.append(layers.SigmoidTransform(alpha=args.alpha))
+    if args.batch_norm:
+        chain.append(layers.MovingBatchNorm2d(data_shape[0]))
     model = layers.SequentialFlow(chain)
 
     if args.spectral_norm:
@@ -354,5 +350,5 @@ if __name__ == "__main__":
         with torch.no_grad():
             fig_filename = os.path.join(args.save, "figs", "{:04d}.jpg".format(epoch))
             utils.makedirs(os.path.dirname(fig_filename))
-            generated_samples = model(fixed_z).view(-1, *data_shape)
+            generated_samples = model(fixed_z, reverse=True).view(-1, *data_shape)
             save_image(generated_samples, fig_filename, nrow=10)
