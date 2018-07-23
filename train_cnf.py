@@ -11,6 +11,7 @@ import torchvision.transforms as tforms
 from torchvision.utils import save_image
 
 import lib.layers as layers
+import lib.layers.wrappers.cnf_regularization as reg_lib
 import lib.spectral_norm as spectral_norm
 import lib.utils as utils
 
@@ -21,13 +22,14 @@ parser = argparse.ArgumentParser("Continuous Normalizing Flow")
 parser.add_argument("--data", choices=["mnist", "svhn", "cifar10"], type=str, default="mnist")
 parser.add_argument("--dims", type=str, default="8,32,32,8")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
-parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
 
+parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
 parser.add_argument(
     "--layer_type", type=str, default="ignore", choices=["ignore", "concat", "concatcoord", "hyper", "blend"]
 )
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
+parser.add_argument('--solver', type=str, default='dopri5', choices=["dopri5", "bdf", "rk4", "midpoint"])
 
 parser.add_argument("--imagesize", type=int, default=None)
 parser.add_argument("--alpha", type=float, default=1e-6)
@@ -47,7 +49,7 @@ parser.add_argument("--logit", type=eval, default=True, choices=[True, False])
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
 parser.add_argument("--dl2_coeff", type=float, default=0, help="Directional L2 on dynamics.")
-parser.add_argument('-spectral_norm', action='store_true')
+parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
 
 parser.add_argument("--begin_epoch", type=int, default=1)
 parser.add_argument("--resume", type=str, default=None)
@@ -66,20 +68,6 @@ if args.layer_type == "blend":
     args.time_length = 1.0
 
 logger.info(args)
-
-
-def _add_spectral_norm(model):
-    def recursive_apply_sn(parent_module):
-        for child_name in list(parent_module._modules.keys()):
-            child_module = parent_module._modules[child_name]
-            classname = child_module.__class__.__name__
-            if classname.find('Conv') != -1 and 'weight' in child_module._parameters:
-                del parent_module._modules[child_name]
-                parent_module.add_module(child_name, spectral_norm.spectral_norm(child_module, 'weight'))
-            else:
-                recursive_apply_sn(child_module)
-
-    recursive_apply_sn(model)
 
 
 def add_noise(x):
@@ -151,7 +139,7 @@ def get_dataset(args):
     return train_loader, test_loader, data_shape
 
 
-def compute_bits_per_dim(x, model):
+def compute_bits_per_dim(x, model, regularization_coeffs=None):
 
     zero = torch.zeros(x.shape[0], 1).to(x)
 
@@ -173,7 +161,13 @@ def compute_bits_per_dim(x, model):
     logpx_per_dim = torch.mean(logpx) / (x.nelement() / x.shape[0])  # averaged over batches
     bits_per_dim = -(logpx_per_dim - np.log(256)) / np.log(2)
 
-    return bits_per_dim, torch.mean(logpx_logit)
+    if regularization_coeffs:
+        # take negative because during training, time is reversed.
+        regularization = -get_regularization(model, regularization_coeffs)
+    else:
+        regularization = torch.tensor(0.).to(bits_per_dim)
+
+    return bits_per_dim, torch.mean(logpx_logit), regularization
 
 
 def count_nfe(model):
@@ -186,6 +180,45 @@ def count_nfe(model):
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+def create_regularization_fns():
+    regularization_fns = []
+    regularization_coeffs = []
+    if args.l2_coeff != 0:
+        regularization_coeffs.append(args.l2_coeff)
+        regularization_fns.append(reg_lib.l2_regularzation_fn)
+    if args.dl2_coeff != 0:
+        regularization_coeffs.append(args.dl2_coeff)
+        regularization_fns.append(reg_lib.directional_l2_regularization_fn)
+    regularization_coeffs = tuple(regularization_coeffs)
+    regularization_fns = tuple(regularization_fns)
+    return regularization_fns, regularization_coeffs
+
+
+def get_regularization(model, regularization_coeffs):
+    if len(regularization_coeffs) == 0:
+        return None
+
+    acc_reg_states = tuple([0.] * len(regularization_coeffs))
+    for module in model.modules():
+        if isinstance(module, layers.CNF):
+            acc_reg_states = tuple(acc + reg for acc, reg in zip(acc_reg_states, module.get_regularization_states()))
+    return sum(state * coeff for state, coeff in zip(acc_reg_states, regularization_coeffs))
+
+
+def add_spectral_norm(model):
+    def recursive_apply_sn(parent_module):
+        for child_name in list(parent_module._modules.keys()):
+            child_module = parent_module._modules[child_name]
+            classname = child_module.__class__.__name__
+            if classname.find('Conv') != -1 and 'weight' in child_module._parameters:
+                del parent_module._modules[child_name]
+                parent_module.add_module(child_name, spectral_norm.spectral_norm(child_module, 'weight'))
+            else:
+                recursive_apply_sn(child_module)
+
+    recursive_apply_sn(model)
 
 
 if __name__ == "__main__":
@@ -201,6 +234,8 @@ if __name__ == "__main__":
     strides = tuple(map(int, args.strides.split(",")))
 
     # build model
+    regularization_fns, regularization_coeffs = create_regularization_fns()
+
     # neural net that parameterizes the gradient of the flow
     gfunc = layers.ODEnet(
         hidden_dims=hidden_dims, input_shape=data_shape, strides=strides, conv=args.conv, layer_type=args.layer_type,
@@ -211,6 +246,8 @@ if __name__ == "__main__":
         layers.CNF(
             odefunc=layers.ODEfunc(input_shape=data_shape, diffeq=gfunc, divergence_fn=args.divergence_fn),
             T=args.time_length,
+            regularization_fns=regularization_fns,
+            solver=args.solver,
         )
     ]
     if args.logit:
@@ -218,7 +255,7 @@ if __name__ == "__main__":
     model = layers.SequentialFlow(chain)
 
     if args.spectral_norm:
-        _add_spectral_norm(model)
+        add_spectral_norm(model)
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
@@ -247,6 +284,7 @@ if __name__ == "__main__":
     loss_meter = utils.RunningAverageMeter(0.97)
     logp_logit_meter = utils.RunningAverageMeter(0.97)
     steps_meter = utils.RunningAverageMeter(0.97)
+    reg_meter = utils.RunningAverageMeter(0.97)
 
     best_loss = float("inf")
     itr = (args.begin_epoch - 1) * len(train_loader)
@@ -263,8 +301,8 @@ if __name__ == "__main__":
             x = cvt(x)
 
             # compute loss
-            bits_per_dim, logit_loss = compute_bits_per_dim(x, model)
-            bits_per_dim.backward()
+            bits_per_dim, logit_loss, regularization = compute_bits_per_dim(x, model, regularization_coeffs)
+            (bits_per_dim + regularization).backward()
 
             optimizer.step()
 
@@ -272,13 +310,14 @@ if __name__ == "__main__":
             loss_meter.update(bits_per_dim.item())
             logp_logit_meter.update(logit_loss.item())
             steps_meter.update(count_nfe(model))
+            reg_meter.update(regularization.item())
 
             if itr % args.log_freq == 0:
                 logger.info(
                     "Iter {:04d} | Time {:.4f}({:.4f}) | Bit/dim {:.4f}({:.4f}) | "
-                    "Logit LogP {:.4f}({:.4f}) | Steps {:.0f}({:.2f})".format(
+                    "Logit LogP {:.4f}({:.4f}) | Steps {:.0f}({:.2f}) | Reg {:.4f}({:.4f})".format(
                         itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, logp_logit_meter.val,
-                        logp_logit_meter.avg, steps_meter.val, steps_meter.avg
+                        logp_logit_meter.avg, steps_meter.val, steps_meter.avg, reg_meter.val, reg_meter.avg
                     )
                 )
 
@@ -293,7 +332,7 @@ if __name__ == "__main__":
                 logit_losses = []
                 for (x, y) in test_loader:
                     x = cvt(x)
-                    loss, logit_loss = compute_bits_per_dim(x, model)
+                    loss, logit_loss, _ = compute_bits_per_dim(x, model)
                     losses.append(loss)
                     logit_losses.append(logit_loss.item())
                 loss = np.mean(losses)

@@ -12,9 +12,11 @@ class CNF(nn.Module):
     def __init__(self, odefunc, T=None, regularization_fns=None, solver='dopri5'):
         super(CNF, self).__init__()
         if T is None:
-            self.integration_times = nn.Parameter(torch.tensor([0.0, 1.0]))
+            self.end_time_param = nn.Parameter(torch.tensor(1.0))
+            self.end_time = self.end_time_param**2
         else:
-            self.integration_times = torch.tensor([0.0, T])
+            self.end_time = T
+        self.integration_times = torch.tensor([0.0, self.end_time])
 
         nreg = 0
         if regularization_fns is not None:

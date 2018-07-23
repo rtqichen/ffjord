@@ -222,7 +222,6 @@ def compute_bits_per_dim(x):
 
     # regularization
     regularization = model.get_regularization()
-    # print(regularization)
 
     return bits_per_dim, regularization
 
