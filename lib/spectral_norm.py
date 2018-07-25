@@ -30,9 +30,10 @@ class SpectralNorm(object):
         # remove w from parameter list
         del module._parameters[name]
 
-        # add g and v as new parameters and express w as g/||v|| * v
+        # add u and v as buffers, which will be updated at every iteration.
         module.register_buffer(name + '_u', torch.randn(u_shape).to(weight))
         module.register_buffer(name + '_v', torch.randn(v_shape).to(weight))
+        # rename the actual un-normalized weights.
         module.register_parameter(name + '_unspec', nn.Parameter(weight.data))
         setattr(module, name, fn.compute_weight(module))
 
