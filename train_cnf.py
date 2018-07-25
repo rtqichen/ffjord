@@ -49,7 +49,8 @@ parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, Fal
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
 parser.add_argument("--dl2_coeff", type=float, default=0, help="Directional L2 on dynamics.")
-parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
+parser.add_argument('--spectral_norm', type=float, default=-1)
+parser.add_argument('--max_out', type=float, default=-1)
 
 parser.add_argument("--begin_epoch", type=int, default=1)
 parser.add_argument("--resume", type=str, default=None)
@@ -203,14 +204,14 @@ def get_regularization(model, regularization_coeffs):
     return sum(state * coeff for state, coeff in zip(acc_reg_states, regularization_coeffs))
 
 
-def add_spectral_norm(model):
+def add_spectral_norm(model, k):
     def recursive_apply_sn(parent_module):
         for child_name in list(parent_module._modules.keys()):
             child_module = parent_module._modules[child_name]
             classname = child_module.__class__.__name__
             if classname.find('Conv') != -1 and 'weight' in child_module._parameters:
                 del parent_module._modules[child_name]
-                parent_module.add_module(child_name, spectral_norm.spectral_norm(child_module, 'weight'))
+                parent_module.add_module(child_name, spectral_norm.spectral_norm(child_module, 'weight', k))
             else:
                 recursive_apply_sn(child_module)
 
@@ -235,7 +236,7 @@ if __name__ == "__main__":
     # neural net that parameterizes the velocity field
     gfunc = lambda: layers.ODEnet(
         hidden_dims=hidden_dims, input_shape=data_shape, strides=strides, conv=args.conv, layer_type=args.layer_type,
-        nonlinearity=args.nonlinearity
+        nonlinearity=args.nonlinearity, max_out=args.max_out
     )
     chain = [
         layers.LogitTransform(alpha=args.alpha),
@@ -250,8 +251,8 @@ if __name__ == "__main__":
         chain.append(layers.MovingBatchNorm2d(data_shape[0]))
     model = layers.SequentialFlow(chain)
 
-    if args.spectral_norm:
-        add_spectral_norm(model)
+    if args.spectral_norm > 0:
+        add_spectral_norm(model, args.spectral_norm)
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))

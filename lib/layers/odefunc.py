@@ -30,10 +30,11 @@ class ODEnet(nn.Module):
     Helper class to make neural nets for use in continuous normalizing flows
     """
 
-    def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus"):
+    def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus", max_out=-1):
         super(ODEnet, self).__init__()
         assert layer_type in ("ignore", "hyper", "concat", "concatcoord", "blend")
         assert nonlinearity in ("tanh", "relu", "softplus", "elu")
+        self.max_out = max_out
 
         self.nonlinearity = {"tanh": F.tanh, "relu": F.relu, "softplus": F.softplus, "elu": F.elu}[nonlinearity]
         if conv:
@@ -89,6 +90,8 @@ class ODEnet(nn.Module):
             # if not last layer, use nonlinearity
             if l < len(self.layers) - 1:
                 dx = self.nonlinearity(dx)
+        if self.max_out > 0:
+            dx = torch.tanh(dx) * self.max_out
         return dx
 
 

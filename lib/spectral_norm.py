@@ -3,8 +3,9 @@ import torch.nn as nn
 
 
 class SpectralNorm(object):
-    def __init__(self, name):
+    def __init__(self, name, k):
         self.name = name
+        self.k = k
 
     def compute_weight(self, module):
         weight = getattr(module, self.name + '_unspec')
@@ -18,11 +19,11 @@ class SpectralNorm(object):
         v = u_weight / torch.norm(u_weight)
         setattr(module, self.name + '_u', u.detach())
         setattr(module, self.name + '_v', v.detach())
-        return weight.view(shape) / (u @ weight @ v)
+        return (self.k * weight.view(shape)) / (u @ weight @ v)
 
     @staticmethod
-    def apply(module, name):
-        fn = SpectralNorm(name)
+    def apply(module, name, k):
+        fn = SpectralNorm(name, k)
 
         weight = getattr(module, name)
         u_shape, v_shape = weight.view(weight.shape[0], -1).shape
@@ -54,6 +55,6 @@ class SpectralNorm(object):
         setattr(module, self.name, self.compute_weight(module))
 
 
-def spectral_norm(module, name='weight'):
-    SpectralNorm.apply(module, name)
+def spectral_norm(module, name='weight', k=1.):
+    SpectralNorm.apply(module, name, k)
     return module
