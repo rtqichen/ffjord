@@ -46,6 +46,8 @@ parser.add_argument("--weight_decay", type=float, default=1e-6)
 parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
 parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
 parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
+parser.add_argument('--autoencode', type=eval, default=False, choices=[True, False])
+parser.add_argument('--rademacher', type=eval, default=False, choices=[True, False])
 
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
@@ -234,24 +236,56 @@ if __name__ == "__main__":
     regularization_fns, regularization_coeffs = create_regularization_fns()
 
     # neural net that parameterizes the velocity field
-    gfunc = lambda: layers.ODEnet(
-        hidden_dims=hidden_dims, input_shape=data_shape, strides=strides, conv=args.conv, layer_type=args.layer_type,
-        nonlinearity=args.nonlinearity
-    )
-    chain = [
-        layers.LogitTransform(alpha=args.alpha),
-        layers.CNF(
-            odefunc=layers.ODEfunc(
+    if args.autoencode:
+
+        def build_cnf():
+            autoencoder_diffeq = layers.AutoencoderDiffEqNet(
+                hidden_dims=hidden_dims,
                 input_shape=data_shape,
-                diffeq=gfunc(),
+                strides=strides,
+                conv=args.conv,
+                layer_type=args.layer_type,
+                nonlinearity=args.nonlinearity,
+            )
+            odefunc = layers.AutoencoderODEfunc(
+                autoencoder_diffeq=autoencoder_diffeq,
                 divergence_fn=args.divergence_fn,
                 residual=args.residual,
-            ),
-            T=args.time_length,
-            regularization_fns=regularization_fns,
-            solver=args.solver,
-        )
-    ]
+                rademacher=args.rademacher,
+            )
+            cnf = layers.CNF(
+                odefunc=odefunc,
+                T=args.time_length,
+                regularization_fns=regularization_fns,
+                solver=args.solver,
+            )
+            return cnf
+    else:
+
+        def build_cnf():
+            diffeq = layers.ODEnet(
+                hidden_dims=hidden_dims,
+                input_shape=data_shape,
+                strides=strides,
+                conv=args.conv,
+                layer_type=args.layer_type,
+                nonlinearity=args.nonlinearity,
+            )
+            odefunc = layers.ODEfunc(
+                diffeq=diffeq,
+                divergence_fn=args.divergence_fn,
+                residual=args.residual,
+                rademacher=args.rademacher,
+            )
+            cnf = layers.CNF(
+                odefunc=odefunc,
+                T=args.time_length,
+                regularization_fns=regularization_fns,
+                solver=args.solver,
+            )
+            return cnf
+
+    chain = [layers.LogitTransform(alpha=args.alpha), build_cnf()]
     if args.batch_norm:
         chain.append(layers.MovingBatchNorm2d(data_shape[0]))
     model = layers.SequentialFlow(chain)

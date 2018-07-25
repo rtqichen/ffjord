@@ -39,8 +39,8 @@ class CNF(nn.Module):
         if reverse:
             integration_times = _flip(integration_times, 0)
 
-        # Fix noise throughout integration.
-        self.odefunc.before_odeint(e=torch.randn(z.shape).to(z.device))
+        # Refresh the odefunc statistics.
+        self.odefunc.before_odeint()
 
         # Add regularization states.
         reg_states = tuple(torch.zeros(1).to(z) for _ in range(self.nreg))
