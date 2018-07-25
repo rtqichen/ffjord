@@ -45,6 +45,7 @@ parser.add_argument("--weight_decay", type=float, default=1e-6)
 
 parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
 parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
+parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
 
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
@@ -240,7 +241,12 @@ if __name__ == "__main__":
     chain = [
         layers.LogitTransform(alpha=args.alpha),
         layers.CNF(
-            odefunc=layers.ODEfunc(input_shape=data_shape, diffeq=gfunc(), divergence_fn=args.divergence_fn),
+            odefunc=layers.ODEfunc(
+                input_shape=data_shape,
+                diffeq=gfunc(),
+                divergence_fn=args.divergence_fn,
+                residual=args.residual,
+            ),
             T=args.time_length,
             regularization_fns=regularization_fns,
             solver=args.solver,

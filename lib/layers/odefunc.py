@@ -93,12 +93,13 @@ class ODEnet(nn.Module):
 
 
 class ODEfunc(nn.Module):
-    def __init__(self, input_shape, diffeq, divergence_fn="approximate"):
+    def __init__(self, input_shape, diffeq, divergence_fn="approximate", residual=False):
         super(ODEfunc, self).__init__()
         assert divergence_fn in ("brute_force", "approximate")
 
         self.input_shape = input_shape
         self.diffeq = diffeq_wrapper(diffeq)
+        self.residual = residual
 
         if divergence_fn == "brute_force":
             self.divergence_fn = divergence_bf
@@ -123,6 +124,8 @@ class ODEfunc(nn.Module):
             y.requires_grad_(True)
             t.requires_grad_(True)
             dy = self.diffeq(t, y)
+            if self.residual:
+                dy = dy - y
             divergence = self.divergence_fn(dy, y, e=self._e).view(batchsize, 1)
 
         return dy, -divergence
