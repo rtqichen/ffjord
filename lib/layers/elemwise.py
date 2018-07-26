@@ -43,17 +43,17 @@ def _logit(x, logpx=None, alpha=_DEFAULT_ALPHA):
     y = torch.log(s) - torch.log(1 - s)
     if logpx is None:
         return y
-    return y, logpx - _logdetgrad(x).view(x.size(0), -1).sum(1, keepdim=True)
+    return y, logpx - _logdetgrad(x, alpha).view(x.size(0), -1).sum(1, keepdim=True)
 
 
 def _sigmoid(y, logpy=None, alpha=_DEFAULT_ALPHA):
     x = (F.sigmoid(y) - alpha) / (1 - 2 * alpha)
     if logpy is None:
         return x
-    return x, logpy + _logdetgrad(x).view(x.size(0), -1).sum(1, keepdim=True)
+    return x, logpy + _logdetgrad(x, alpha).view(x.size(0), -1).sum(1, keepdim=True)
 
 
-def _logdetgrad(x, alpha=_DEFAULT_ALPHA):
+def _logdetgrad(x, alpha):
     s = alpha + (1 - 2 * alpha) * x
     logdetgrad = -torch.log(s - s * s) + math.log(1 - 2 * alpha)
     return logdetgrad
