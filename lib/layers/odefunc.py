@@ -1,4 +1,5 @@
 import copy
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -214,9 +215,11 @@ class ODEfunc(nn.Module):
             y.requires_grad_(True)
             t.requires_grad_(True)
             dy = self.diffeq(t, y)
-            if self.residual:
-                dy = dy - y
             divergence = self.divergence_fn(dy, y, e=self._e).view(batchsize, 1)
+        if self.residual:
+            dy = dy - y
+            divergence -= torch.ones_like(divergence) * torch.tensor(np.prod(y.shape[1:]), dtype=torch.float32
+                                                                     ).to(divergence)
 
         return dy, -divergence
 
@@ -225,8 +228,8 @@ class AutoencoderODEfunc(nn.Module):
     def __init__(self, autoencoder_diffeq, divergence_fn="approximate", residual=False, rademacher=False):
         assert divergence_fn in ("approximate"), "Only approximate divergence supported at the moment. (TODO)"
         assert isinstance(autoencoder_diffeq, AutoencoderDiffEqNet)
-        assert not residual, "Skip/residual connections not allowed."
         super(AutoencoderODEfunc, self).__init__()
+        self.residual = residual
         self.autoencoder_diffeq = autoencoder_diffeq
         self.rademacher = rademacher
 
@@ -260,4 +263,9 @@ class AutoencoderODEfunc(nn.Module):
             e_vjp_dfdy = torch.autograd.grad(dy, h, e_vjp_dhdy, create_graph=True)[0]
             divergence = torch.sum((e_vjp_dfdy * self._e).view(batchsize, -1), 1, keepdim=True)
 
-            return dy, -divergence
+        if self.residual:
+            dy = dy - y
+            divergence -= torch.ones_like(divergence) * torch.tensor(np.prod(y.shape[1:]), dtype=torch.float32
+                                                                     ).to(divergence)
+
+        return dy, -divergence

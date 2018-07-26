@@ -18,7 +18,7 @@ def get_logger(logpath, filepath, package_files=[], displaying=True, saving=True
         level = logging.INFO
     logger.setLevel(level)
     if saving:
-        info_file_handler = logging.FileHandler(logpath, mode="w")
+        info_file_handler = logging.FileHandler(logpath, mode="a")
         info_file_handler.setLevel(level)
         logger.addHandler(info_file_handler)
     if displaying:
