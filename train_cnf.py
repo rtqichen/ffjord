@@ -146,17 +146,20 @@ def compute_bits_per_dim(x, model, regularization_coeffs=None):
     zero = torch.zeros(x.shape[0], 1).to(x)
 
     # preprocessing layer
-    logit_x, delta_logpx_logit_tranform = model.chain[0](x, zero)
-
-    # the rest of the layers
-    z, delta_logp = model(logit_x, zero, inds=range(1, len(model.chain)))
-
-    # compute log p(z)
+    # logit_x, delta_logpx_logit_tranform = model.chain[0](x, zero)
+    #
+    # # the rest of the layers
+    # z, delta_logp = model(logit_x, zero, inds=range(1, len(model.chain)))
+    #
+    # # compute log p(z)
+    # logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)
+    #
+    # # compute log p(x)
+    # logpx_logit = logpz - delta_logp
+    # logpx = logpx_logit - delta_logpx_logit_tranform
+    z, delta_logp = model(x, zero)
     logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)
-
-    # compute log p(x)
-    logpx_logit = logpz - delta_logp
-    logpx = logpx_logit - delta_logpx_logit_tranform
+    logpx = logpz - delta_logp
 
     logpx_per_dim = torch.sum(logpx) / x.nelement()  # averaged over batches
     bits_per_dim = -(logpx_per_dim - np.log(256)) / np.log(2)
@@ -166,10 +169,11 @@ def compute_bits_per_dim(x, model, regularization_coeffs=None):
     else:
         regularization = torch.tensor(0.).to(bits_per_dim)
 
-    return bits_per_dim, torch.mean(logpx_logit), regularization
+    return bits_per_dim, torch.tensor(0.), regularization
 
 
 def count_nfe(model):
+    return 0
     num_evals = 0
     for layer in model.chain:
         if isinstance(layer, layers.CNF):
@@ -289,6 +293,7 @@ if __name__ == "__main__":
     if args.batch_norm:
         chain.append(layers.MovingBatchNorm2d(data_shape[0]))
     model = layers.SequentialFlow(chain)
+    model = torch.nn.DataParallel(model)
 
     if args.spectral_norm:
         add_spectral_norm(model)
