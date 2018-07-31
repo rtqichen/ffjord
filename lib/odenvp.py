@@ -2,8 +2,7 @@ import torch
 import torch.nn as nn
 import lib.layers as layers
 import lib.layers.diffeq_layers as diffeq_layers
-import lib.layers.wrappers.cnf_regularization as reg_lib
-from lib.spectral_norm import spectral_norm
+from lib.layers.odefunc import ODEnet
 
 
 class ODENVP(nn.Module):
@@ -21,35 +20,24 @@ class ODENVP(nn.Module):
         self,
         input_size,
         n_scale=float('inf'),
-        n_resblocks=2,
-        multiplier=1,
-        bn=True,
-        bn_lag=0.,
+        n_blocks=2,
         intermediate_dim=32,
         squash_input=True,
         alpha=0.05,
-        l2_coeff=0.,
-        dl2_coeff=0.,
-        spectral_norm=False,
         solver='dopri5',
     ):
         super(ODENVP, self).__init__()
         self.n_scale = min(n_scale, self._calc_n_scale(input_size))
-        self.n_resblocks = n_resblocks
-        self.multiplier = multiplier
+        self.n_blocks = n_blocks
         self.intermediate_dim = intermediate_dim
         self.squash_input = squash_input
         self.alpha = alpha
         self.solver = solver
 
-        self._create_regularization_fns(l2_coeff, dl2_coeff)
-
         if not self.n_scale > 0:
             raise ValueError('Could not compute number of scales for input of' 'size (%d,%d,%d,%d)' % input_size)
 
         self.transforms = self._build_net(input_size)
-        if spectral_norm:
-            self._add_spectral_norm()
 
     def _build_net(self, input_size):
         _, c, h, w = input_size
@@ -62,26 +50,12 @@ class ODENVP(nn.Module):
                     squeeze=(i < self.n_scale - 1),  # don't squeeze last layer
                     init_layer=layers.LogitTransform(self.alpha)  # input transform
                     if self.squash_input and i == 0 else None,
-                    n_resblocks=self.n_resblocks,
-                    penult_multiplier=self.multiplier,
-                    cnf_regularization_fns=self.regularization_fns,
+                    n_blocks=self.n_blocks,
                     solver=self.solver,
                 )
             )
             c, h, w = c * 2, h // 2, w // 2
         return nn.ModuleList(transforms)
-
-    def _create_regularization_fns(self, l2_coeff, dl2_coeff):
-        regularization_fns = []
-        regularization_coeffs = []
-        if l2_coeff != 0:
-            regularization_coeffs.append(l2_coeff)
-            regularization_fns.append(reg_lib.l2_regularzation_fn)
-        if dl2_coeff != 0:
-            regularization_coeffs.append(dl2_coeff)
-            regularization_fns.append(reg_lib.directional_l2_regularization_fn)
-        self.regularization_coeffs = tuple(regularization_coeffs)
-        self.regularization_fns = tuple(regularization_fns)
 
     def get_regularization(self):
         if len(self.regularization_fns) == 0:
@@ -94,19 +68,6 @@ class ODENVP(nn.Module):
                     acc + reg for acc, reg in zip(acc_reg_states, module.get_regularization_states())
                 )
         return sum(state * coeff for state, coeff in zip(acc_reg_states, self.regularization_coeffs))
-
-    def _add_spectral_norm(self):
-        def recursive_apply_sn(parent_module):
-            for child_name in list(parent_module._modules.keys()):
-                child_module = parent_module._modules[child_name]
-                classname = child_module.__class__.__name__
-                if classname.find('Conv') != -1 and 'weight' in child_module._parameters:
-                    del parent_module._modules[child_name]
-                    parent_module.add_module(child_name, spectral_norm(child_module, 'weight'))
-                else:
-                    recursive_apply_sn(child_module)
-
-        recursive_apply_sn(self)
 
     def _calc_n_scale(self, input_size):
         _, _, h, w = input_size
@@ -130,7 +91,7 @@ class ODENVP(nn.Module):
                 output_sizes.append((n, c, h, w))
         return tuple(output_sizes)
 
-    def forward(self, x, logpx=None, reverse=False, include_regularition=False):
+    def forward(self, x, logpx=None, reverse=False):
         if reverse:
             return self._generate(x, logpx)
         else:
@@ -148,7 +109,9 @@ class ODENVP(nn.Module):
                 # last layer, no factor out
                 factor_out = x
             out.append(factor_out)
-        return tuple(out) if logpx is None else (tuple(out), _logpx)
+        out = [o.view(o.size()[0], -1) for o in out]
+        out = torch.cat(out, 1)
+        return out if logpx is None else (out, _logpx)
 
     def _generate(self, zs, logpz=None):
         _logpz = torch.zeros(zs[0].shape[0], 1).to(zs[0]) if logpz is None else logpz
@@ -166,37 +129,36 @@ class StackedCNFLayers(layers.SequentialFlow):
         idim=32,
         squeeze=True,
         init_layer=None,
-        n_resblocks=2,
-        penult_multiplier=1,
-        bn=True,
-        bn_lag=0.,
-        cnf_regularization_fns=None,
+        n_blocks=1,
         solver='dopri5',
     ):
         chain = []
         if init_layer is not None:
             chain.append(init_layer)
 
-        def _make_odefunc(size, multiplier=1):
-            return layers.ODEfunc(size, diffeq_layers.ResNet(size[0], idim, n_resblocks=n_resblocks * multiplier))
+        def _make_odefunc(size):
+            net = ODEnet((idim,), size, (1, 1), True, layer_type="ignore")
+            f = layers.ODEfunc(net)
+            return f
 
         if squeeze:
             c, h, w = initial_size
             after_squeeze_size = c * 4, h // 2, w // 2
-            chain += [
-                layers.CNF(_make_odefunc(initial_size), regularization_fns=cnf_regularization_fns, solver=solver),
-                layers.MovingBatchNorm2d(initial_size[0], bn_lag=bn_lag),
-                layers.SqueezeLayer(2),
-                layers.CNF(_make_odefunc(after_squeeze_size), regularization_fns=cnf_regularization_fns, solver=solver),
-                layers.MovingBatchNorm2d(after_squeeze_size[0], bn_lag=bn_lag),
-            ]
+            pre = [layers.CNF(_make_odefunc(initial_size), solver=solver) for i in range(n_blocks)]
+            post = [layers.CNF(_make_odefunc(after_squeeze_size), solver=solver) for i in range(n_blocks)]
+            chain += pre + [layers.SqueezeLayer(2)] + post
         else:
-            chain += [
-                layers.CNF(
-                    _make_odefunc(initial_size, penult_multiplier), regularization_fns=cnf_regularization_fns,
-                    solver=solver
-                ),
-                layers.MovingBatchNorm2d(initial_size[0], bn_lag=bn_lag)
-            ]
+            chain += [layers.CNF(_make_odefunc(initial_size), solver=solver) for i in range(n_blocks)]
 
         super(StackedCNFLayers, self).__init__(chain)
+
+
+if __name__ == "__main__":
+    f = ODENVP((32, 1, 28, 28), )
+    z = torch.randn(32, 1, 28, 28)
+    z = torch.clamp(z, 0, 1)
+    print(f)
+    out = f(z)
+    1/0
+    print(f)
+

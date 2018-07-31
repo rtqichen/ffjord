@@ -12,8 +12,8 @@ from torchvision.utils import save_image
 
 import lib.layers as layers
 import lib.layers.wrappers.cnf_regularization as reg_lib
-import lib.spectral_norm as spectral_norm
 import lib.utils as utils
+import lib.odenvp as odenvp
 
 # go fast boi!!
 torch.backends.cudnn.benchmark = True
@@ -22,6 +22,7 @@ parser = argparse.ArgumentParser("Continuous Normalizing Flow")
 parser.add_argument("--data", choices=["mnist", "svhn", "cifar10"], type=str, default="mnist")
 parser.add_argument("--dims", type=str, default="8,32,32,8")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
+parser.add_argument("--num_blocks", type=int, default=1)
 
 parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
 parser.add_argument(
@@ -36,7 +37,6 @@ parser.add_argument("--alpha", type=float, default=1e-6)
 parser.add_argument("--time_length", type=float, default=None)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
-parser.add_argument("--data_size", type=int, default=10000)
 parser.add_argument("--batch_size", type=int, default=200)
 parser.add_argument("--lr_max", type=float, default=1e-3)
 parser.add_argument("--lr_min", type=float, default=1e-3)
@@ -52,7 +52,6 @@ parser.add_argument('--rademacher', type=eval, default=False, choices=[True, Fal
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
 parser.add_argument("--dl2_coeff", type=float, default=0, help="Directional L2 on dynamics.")
-parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
 
 parser.add_argument("--begin_epoch", type=int, default=1)
 parser.add_argument("--resume", type=str, default=None)
@@ -60,6 +59,11 @@ parser.add_argument("--save", type=str, default="experiments/cnf")
 parser.add_argument("--val_freq", type=int, default=1)
 parser.add_argument("--log_freq", type=int, default=10)
 parser.add_argument("--gpu", type=int, default=0)
+
+#NVP params
+parser.add_argument("--n_blocks", type=int, default=2)
+parser.add_argument("--int_dim", type=int, default=32)
+
 args = parser.parse_args()
 
 # logger
@@ -134,6 +138,8 @@ def get_dataset(args):
             ])
         )
     data_shape = (im_dim, im_size, im_size)
+    if not args.conv:
+        data_shape = (im_dim * im_size * im_size, )
 
     train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
@@ -144,19 +150,27 @@ def get_dataset(args):
 
 def compute_bits_per_dim(x, model, regularization_coeffs=None):
     zero = torch.zeros(x.shape[0], 1).to(x)
+    #
+    # # preprocessing layer
+    # logit_x, delta_logpx_logit_tranform = model.chain[0](x, zero)
+    #
+    # # the rest of the layers
+    # z, delta_logp = model(logit_x, zero, inds=range(1, len(model.chain)))
+    #
+    # # compute log p(z)
+    # logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)
+    #
+    # # compute log p(x)
+    # logpx_logit = logpz - delta_logp
+    # logpx = logpx_logit - delta_logpx_logit_tranform
 
-    # preprocessing layer
-    logit_x, delta_logpx_logit_tranform = model.chain[0](x, zero)
 
-    # the rest of the layers
-    z, delta_logp = model(logit_x, zero, inds=range(1, len(model.chain)))
+    z, delta_logp = model(x, zero)
 
-    # compute log p(z)
     logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)
+    logpx = logpz - delta_logp  # logpx_logit - delta_logpx_logit_tranform
 
-    # compute log p(x)
-    logpx_logit = logpz - delta_logp
-    logpx = logpx_logit - delta_logpx_logit_tranform
+
 
     logpx_per_dim = torch.sum(logpx) / x.nelement()  # averaged over batches
     bits_per_dim = -(logpx_per_dim - np.log(256)) / np.log(2)
@@ -166,10 +180,11 @@ def compute_bits_per_dim(x, model, regularization_coeffs=None):
     else:
         regularization = torch.tensor(0.).to(bits_per_dim)
 
-    return bits_per_dim, torch.mean(logpx_logit), regularization
+    return bits_per_dim, torch.tensor(0.0), regularization
 
 
 def count_nfe(model):
+    return 0
     num_evals = 0
     for layer in model.chain:
         if isinstance(layer, layers.CNF):
@@ -206,20 +221,6 @@ def get_regularization(model, regularization_coeffs):
     return sum(state * coeff for state, coeff in zip(acc_reg_states, regularization_coeffs))
 
 
-def add_spectral_norm(model):
-    def recursive_apply_sn(parent_module):
-        for child_name in list(parent_module._modules.keys()):
-            child_module = parent_module._modules[child_name]
-            classname = child_module.__class__.__name__
-            if classname.find('Conv') != -1 and 'weight' in child_module._parameters:
-                del parent_module._modules[child_name]
-                parent_module.add_module(child_name, spectral_norm.spectral_norm(child_module, 'weight'))
-            else:
-                recursive_apply_sn(child_module)
-
-    recursive_apply_sn(model)
-
-
 if __name__ == "__main__":
 
     # get deivce
@@ -235,63 +236,61 @@ if __name__ == "__main__":
     # build model
     regularization_fns, regularization_coeffs = create_regularization_fns()
 
-    # neural net that parameterizes the velocity field
-    if args.autoencode:
-
-        def build_cnf():
-            autoencoder_diffeq = layers.AutoencoderDiffEqNet(
-                hidden_dims=hidden_dims,
-                input_shape=data_shape,
-                strides=strides,
-                conv=args.conv,
-                layer_type=args.layer_type,
-                nonlinearity=args.nonlinearity,
-            )
-            odefunc = layers.AutoencoderODEfunc(
-                autoencoder_diffeq=autoencoder_diffeq,
-                divergence_fn=args.divergence_fn,
-                residual=args.residual,
-                rademacher=args.rademacher,
-            )
-            cnf = layers.CNF(
-                odefunc=odefunc,
-                T=args.time_length,
-                regularization_fns=regularization_fns,
-                solver=args.solver,
-            )
-            return cnf
-    else:
-
-        def build_cnf():
-            diffeq = layers.ODEnet(
-                hidden_dims=hidden_dims,
-                input_shape=data_shape,
-                strides=strides,
-                conv=args.conv,
-                layer_type=args.layer_type,
-                nonlinearity=args.nonlinearity,
-            )
-            odefunc = layers.ODEfunc(
-                diffeq=diffeq,
-                divergence_fn=args.divergence_fn,
-                residual=args.residual,
-                rademacher=args.rademacher,
-            )
-            cnf = layers.CNF(
-                odefunc=odefunc,
-                T=args.time_length,
-                regularization_fns=regularization_fns,
-                solver=args.solver,
-            )
-            return cnf
-
-    chain = [layers.LogitTransform(alpha=args.alpha), build_cnf()]
-    if args.batch_norm:
-        chain.append(layers.MovingBatchNorm2d(data_shape[0]))
-    model = layers.SequentialFlow(chain)
-
-    if args.spectral_norm:
-        add_spectral_norm(model)
+    # # neural net that parameterizes the velocity field
+    # if args.autoencode:
+    #
+    #     def build_cnf():
+    #         autoencoder_diffeq = layers.AutoencoderDiffEqNet(
+    #             hidden_dims=hidden_dims,
+    #             input_shape=data_shape,
+    #             strides=strides,
+    #             conv=args.conv,
+    #             layer_type=args.layer_type,
+    #             nonlinearity=args.nonlinearity,
+    #         )
+    #         odefunc = layers.AutoencoderODEfunc(
+    #             autoencoder_diffeq=autoencoder_diffeq,
+    #             divergence_fn=args.divergence_fn,
+    #             residual=args.residual,
+    #             rademacher=args.rademacher,
+    #         )
+    #         cnf = layers.CNF(
+    #             odefunc=odefunc,
+    #             T=args.time_length,
+    #             regularization_fns=regularization_fns,
+    #             solver=args.solver,
+    #         )
+    #         return cnf
+    # else:
+    #     print(strides, data_shape, hidden_dims)
+    #     def build_cnf():
+    #         diffeq = layers.ODEnet(
+    #             hidden_dims=hidden_dims,
+    #             input_shape=data_shape,
+    #             strides=strides,
+    #             conv=args.conv,
+    #             layer_type=args.layer_type,
+    #             nonlinearity=args.nonlinearity,
+    #         )
+    #         odefunc = layers.ODEfunc(
+    #             diffeq=diffeq,
+    #             divergence_fn=args.divergence_fn,
+    #             residual=args.residual,
+    #             rademacher=args.rademacher,
+    #         )
+    #         cnf = layers.CNF(
+    #             odefunc=odefunc,
+    #             T=args.time_length,
+    #             regularization_fns=regularization_fns,
+    #             solver=args.solver,
+    #         )
+    #         return cnf
+    #
+    # chain = [layers.LogitTransform(alpha=args.alpha)] + [build_cnf() for i in range(args.num_blocks)]
+    # if args.batch_norm:
+    #     chain.append(layers.MovingBatchNorm2d(data_shape[0]))
+    # model = layers.SequentialFlow(chain)
+    model = odenvp.ODENVP((args.batch_size, *data_shape), n_blocks=args.n_blocks, intermediate_dim=args.int_dim, alpha=args.alpha)
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
@@ -367,6 +366,8 @@ if __name__ == "__main__":
                 losses = []
                 logit_losses = []
                 for (x, y) in test_loader:
+                    if not args.conv:
+                        x = x.view(x.shape[0], -1)
                     x = cvt(x)
                     loss, logit_loss, _ = compute_bits_per_dim(x, model)
                     losses.append(loss)
@@ -390,5 +391,5 @@ if __name__ == "__main__":
         with torch.no_grad():
             fig_filename = os.path.join(args.save, "figs", "{:04d}.jpg".format(epoch))
             utils.makedirs(os.path.dirname(fig_filename))
-            generated_samples = model(fixed_z, reverse=True).view(-1, *data_shape)
+            generated_samples = model(fixed_z, reverse=True).view(-1, 1, 28, 28)#*data_shape)
             save_image(generated_samples, fig_filename, nrow=10)
