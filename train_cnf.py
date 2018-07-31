@@ -22,7 +22,6 @@ parser = argparse.ArgumentParser("Continuous Normalizing Flow")
 parser.add_argument("--data", choices=["mnist", "svhn", "cifar10"], type=str, default="mnist")
 parser.add_argument("--dims", type=str, default="8,32,32,8")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
-parser.add_argument("--num_blocks", type=int, default=1)
 
 parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
 parser.add_argument(
@@ -61,8 +60,9 @@ parser.add_argument("--log_freq", type=int, default=10)
 parser.add_argument("--gpu", type=int, default=0)
 
 #NVP params
-parser.add_argument("--n_blocks", type=int, default=2)
 parser.add_argument("--int_dim", type=int, default=32)
+parser.add_argument("--num_blocks", type=int, default=1)
+
 
 args = parser.parse_args()
 
@@ -290,7 +290,12 @@ if __name__ == "__main__":
     # if args.batch_norm:
     #     chain.append(layers.MovingBatchNorm2d(data_shape[0]))
     # model = layers.SequentialFlow(chain)
-    model = odenvp.ODENVP((args.batch_size, *data_shape), n_blocks=args.n_blocks, intermediate_dim=args.int_dim, alpha=args.alpha)
+    model = odenvp.ODENVP((args.batch_size, *data_shape), n_blocks=args.num_blocks, intermediate_dim=args.int_dim, alpha=args.alpha)
+    # for k in model.state_dict():
+    #     v = model.state_dict().get(k)
+    #     print(k, v.size())
+    # 1/0
+    model = torch.nn.DataParallel(model)
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
@@ -313,7 +318,7 @@ if __name__ == "__main__":
     model.to(device)
 
     # For visualization.
-    fixed_z = cvt(torch.randn(100, *data_shape))
+    fixed_z = cvt(torch.randn(100, np.prod(data_shape)))
 
     time_meter = utils.RunningAverageMeter(0.97)
     loss_meter = utils.RunningAverageMeter(0.97)
@@ -372,6 +377,7 @@ if __name__ == "__main__":
                     loss, logit_loss, _ = compute_bits_per_dim(x, model)
                     losses.append(loss)
                     logit_losses.append(logit_loss.item())
+
                 loss = np.mean(losses)
                 logit_loss = np.mean(logit_losses)
                 logger.info(

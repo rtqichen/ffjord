@@ -3,6 +3,7 @@ import torch.nn as nn
 import lib.layers as layers
 import lib.layers.diffeq_layers as diffeq_layers
 from lib.layers.odefunc import ODEnet
+import numpy as np
 
 
 class ODENVP(nn.Module):
@@ -109,11 +110,19 @@ class ODENVP(nn.Module):
                 # last layer, no factor out
                 factor_out = x
             out.append(factor_out)
+        self.dims = [o.size()[1:] for o in out]
         out = [o.view(o.size()[0], -1) for o in out]
         out = torch.cat(out, 1)
         return out if logpx is None else (out, _logpx)
 
-    def _generate(self, zs, logpz=None):
+    def _generate(self, z, logpz=None):
+        zs = []
+        i = 0
+        for dims in self.dims:
+            s = np.prod(dims)
+            zs.append(z[:, i: i + s])
+            i += s
+        zs = [_z.view(_z.size()[0], *zsize) for _z, zsize in zip(zs, self.dims)]
         _logpz = torch.zeros(zs[0].shape[0], 1).to(zs[0]) if logpz is None else logpz
         z_prev, _logpz = self.transforms[-1](zs[-1], _logpz, reverse=True)
         for idx in range(len(self.transforms) - 2, -1, -1):
@@ -144,11 +153,11 @@ class StackedCNFLayers(layers.SequentialFlow):
         if squeeze:
             c, h, w = initial_size
             after_squeeze_size = c * 4, h // 2, w // 2
-            pre = [layers.CNF(_make_odefunc(initial_size), solver=solver) for i in range(n_blocks)]
-            post = [layers.CNF(_make_odefunc(after_squeeze_size), solver=solver) for i in range(n_blocks)]
+            pre = [layers.CNF(_make_odefunc(initial_size), solver=solver, T=1.) for i in range(n_blocks)]
+            post = [layers.CNF(_make_odefunc(after_squeeze_size), solver=solver, T=1.) for i in range(n_blocks)]
             chain += pre + [layers.SqueezeLayer(2)] + post
         else:
-            chain += [layers.CNF(_make_odefunc(initial_size), solver=solver) for i in range(n_blocks)]
+            chain += [layers.CNF(_make_odefunc(initial_size), solver=solver, T=1.) for i in range(n_blocks)]
 
         super(StackedCNFLayers, self).__init__(chain)
 
