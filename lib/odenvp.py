@@ -40,6 +40,8 @@ class ODENVP(nn.Module):
 
         self.transforms = self._build_net(input_size)
 
+        self.dims = [o[1:] for o in self.calc_output_size(input_size)]
+
     def _build_net(self, input_size):
         _, c, h, w = input_size
         transforms = []
@@ -110,7 +112,6 @@ class ODENVP(nn.Module):
                 # last layer, no factor out
                 factor_out = x
             out.append(factor_out)
-        self.dims = [o.size()[1:] for o in out]
         out = [o.view(o.size()[0], -1) for o in out]
         out = torch.cat(out, 1)
         return out if logpx is None else (out, _logpx)
