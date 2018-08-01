@@ -2,8 +2,26 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 _DEFAULT_ALPHA = 1e-6
+
+
+class ZeroMeanTransform(nn.Module):
+    def __init__(self):
+        nn.Module.__init__(self)
+
+    def forward(self, x, logpx=None, reverse=False):
+        if reverse:
+            x = x + .5
+            if logpx is None:
+                return x
+            return x, logpx
+        else:
+            x = x - 5.
+            if logpx is None:
+                return x
+            return x, logpx
 
 
 class LogitTransform(nn.Module):

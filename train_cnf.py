@@ -133,7 +133,7 @@ def get_dataset(args):
                 add_noise,
             ])
         )
-    data_shape = (im_dim, im_size, im_size)
+    data_shape = (im_dim, im_size, im_size) if args.conv else (im_dim * im_size * im_size, )
 
     train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
@@ -288,8 +288,11 @@ if __name__ == "__main__":
                 solver=args.solver,
             )
             return cnf
+    if args.alpha > 0:
+        chain = [layers.LogitTransform(alpha=args.alpha), build_cnf()]
+    else:
+        chain = [layers.ZeroMeanTransform(), build_cnf()]
 
-    chain = [layers.LogitTransform(alpha=args.alpha), build_cnf()]
     if args.batch_norm:
         chain.append(layers.MovingBatchNorm2d(data_shape[0]))
     model = layers.SequentialFlow(chain)
