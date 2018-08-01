@@ -53,6 +53,21 @@ class ConcatLinear(nn.Module):
         return self._layer(ttx)
 
 
+class TGatedLinear(nn.Module):
+    def __init__(self, dim_in, dim_out):
+        super(TGatedLinear, self).__init__()
+        self._x_layer = nn.Linear(dim_in, dim_out)
+        self._t_nonlinearity_layer = nn.Linear(1, dim_out)
+        self._t_bias_layer = nn.Linear(1, dim_out)
+
+    def forward(self, t, x):
+        batch_t = torch.ones_like(x[:, :1]) * t
+        t_gate = torch.sigmoid(self._t_nonlinearity_layer(batch_t))
+        #t_bias = self._t_bias_layer(batch_t)
+        preact = self._x_layer(x)
+        return preact * t_gate# + t_bias
+
+
 class HyperConv2d(nn.Module):
     def __init__(self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False):
         super(HyperConv2d, self).__init__()

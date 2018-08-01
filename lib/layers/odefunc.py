@@ -39,10 +39,13 @@ class ODEnet(nn.Module):
 
     def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus"):
         super(ODEnet, self).__init__()
-        assert layer_type in ("ignore", "hyper", "concat", "concatcoord", "blend")
-        assert nonlinearity in ("tanh", "relu", "softplus", "elu")
+        assert layer_type in ("ignore", "hyper", "concat", "concatcoord", "blend", "tgated")
+        assert nonlinearity in ("tanh", "relu", "softplus", "elu", "identity")
+        if layer_type == "tgated":
+            assert nonlinearity == "identity", "can only use tgated with id nonlin"
 
-        self.nonlinearity = {"tanh": F.tanh, "relu": F.relu, "softplus": F.softplus, "elu": F.elu}[nonlinearity]
+        self.nonlinearity = {"tanh": F.tanh, "relu": F.relu, "softplus": F.softplus,
+                             "elu": F.elu, "identity": identity}[nonlinearity]
         if conv:
             assert len(strides) == len(hidden_dims) + 1
             base_layer = {
@@ -60,6 +63,7 @@ class ODEnet(nn.Module):
                 "concat": diffeq_layers.ConcatLinear,
                 "blend": diffeq_layers.BlendLinear,
                 "concatcoord": diffeq_layers.ConcatLinear,
+                "tgated": diffeq_layers.TGatedLinear
             }[layer_type]
 
         # build layers and add them
@@ -99,6 +103,10 @@ class ODEnet(nn.Module):
         return dx
 
 
+def identity(x):
+    return x
+
+
 class AutoencoderDiffEqNet(nn.Module):
     """
     Helper class to make neural nets for use in continuous normalizing flows
@@ -106,10 +114,12 @@ class AutoencoderDiffEqNet(nn.Module):
 
     def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus"):
         super(AutoencoderDiffEqNet, self).__init__()
-        assert layer_type in ("ignore", "hyper", "concat", "concatcoord", "blend")
-        assert nonlinearity in ("tanh", "relu", "softplus", "elu")
+        assert layer_type in ("ignore", "hyper", "concat", "concatcoord", "blend", "tgated")
+        assert nonlinearity in ("tanh", "relu", "softplus", "elu", "identity")
+        if layer_type == "tgated":
+            assert nonlinearity == "identity"
 
-        self.nonlinearity = {"tanh": F.tanh, "relu": F.relu, "softplus": F.softplus, "elu": F.elu}[nonlinearity]
+        self.nonlinearity = {"tanh": F.tanh, "relu": F.relu, "softplus": F.softplus, "elu": F.elu, "identity": identity}[nonlinearity]
         if conv:
             assert len(strides) == len(hidden_dims) + 1
             base_layer = {
@@ -127,6 +137,7 @@ class AutoencoderDiffEqNet(nn.Module):
                 "concat": diffeq_layers.ConcatLinear,
                 "blend": diffeq_layers.BlendLinear,
                 "concatcoord": diffeq_layers.ConcatLinear,
+                "tagted": diffeq_layers.TGatedLinear
             }[layer_type]
 
         # build layers and add them

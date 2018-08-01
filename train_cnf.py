@@ -25,10 +25,10 @@ parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
 
 parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
 parser.add_argument(
-    "--layer_type", type=str, default="ignore", choices=["ignore", "concat", "concatcoord", "hyper", "blend"]
+    "--layer_type", type=str, default="ignore", choices=["ignore", "concat", "concatcoord", "hyper", "blend", "tgated"]
 )
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
-parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
+parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu", "identity"])
 parser.add_argument('--solver', type=str, default='dopri5', choices=["dopri5", "bdf", "rk4", "midpoint"])
 
 parser.add_argument("--imagesize", type=int, default=None)
@@ -173,7 +173,7 @@ def compute_bits_per_dim(x, model, regularization_coeffs=None):
 
 
 def count_nfe(model):
-    return 0
+    #return 0
     num_evals = 0
     for layer in model.chain:
         if isinstance(layer, layers.CNF):
@@ -296,7 +296,7 @@ if __name__ == "__main__":
     if args.batch_norm:
         chain.append(layers.MovingBatchNorm2d(data_shape[0]))
     model = layers.SequentialFlow(chain)
-    model = torch.nn.DataParallel(model)
+    #model = torch.nn.DataParallel(model)
 
     if args.spectral_norm:
         add_spectral_norm(model)
