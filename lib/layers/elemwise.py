@@ -17,7 +17,7 @@ class ZeroMeanTransform(nn.Module):
                 return x
             return x, logpx
         else:
-            x = x - 5.
+            x = x - .5
             if logpx is None:
                 return x
             return x, logpx
