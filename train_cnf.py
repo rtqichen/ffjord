@@ -36,6 +36,7 @@ parser.add_argument("--alpha", type=float, default=1e-6)
 parser.add_argument("--time_length", type=float, default=None)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
+parser.add_argument("--num_flows", type=int, default=1)
 parser.add_argument("--data_size", type=int, default=10000)
 parser.add_argument("--batch_size", type=int, default=200)
 parser.add_argument("--lr_max", type=float, default=1e-3)
@@ -71,6 +72,39 @@ if args.layer_type == "blend":
     args.time_length = 1.0
 
 logger.info(args)
+
+import torch.nn as nn
+identity = lambda x: x
+class DecoupledDiffEQ(nn.Module):
+    def __init__(self, dim_in, dim_mid, dim_basis, nonlinearity="softplus"):
+        super(DecoupledDiffEQ, self).__init__()
+        self.dim_basis = dim_basis
+        self.bottleneck = nn.Sequential(
+            nn.Linear(dim_in, 512),
+            nn.Softplus(),
+            nn.Linear(512, 256),
+            nn.Softplus(),
+            nn.Linear(256, 128),
+            nn.Softplus(),
+            nn.Linear(128, dim_basis)
+        )
+        self.basis = nn.Sequential(
+            nn.Linear(1, dim_mid),
+            nn.Softplus(),
+            nn.Linear(dim_mid, dim_basis * dim_in)
+        )
+
+    def forward(self, t, x):
+        batch_t = torch.ones_like(x[:, :1]) * t
+        basis = self.basis(batch_t).view(x.size()[0], self.dim_basis, -1)
+        bottleneck = self.bottleneck(x)
+        dxdt = (bottleneck[:, :, None] * basis).sum(1)
+        return dxdt
+
+
+
+
+
 
 
 def add_noise(x):
@@ -240,61 +274,69 @@ if __name__ == "__main__":
     regularization_fns, regularization_coeffs = create_regularization_fns()
 
     # neural net that parameterizes the velocity field
-    if args.autoencode:
+    if False:
+        if args.autoencode:
 
-        def build_cnf():
-            autoencoder_diffeq = layers.AutoencoderDiffEqNet(
-                hidden_dims=hidden_dims,
-                input_shape=data_shape,
-                strides=strides,
-                conv=args.conv,
-                layer_type=args.layer_type,
-                nonlinearity=args.nonlinearity,
-            )
-            odefunc = layers.AutoencoderODEfunc(
-                autoencoder_diffeq=autoencoder_diffeq,
-                divergence_fn=args.divergence_fn,
-                residual=args.residual,
-                rademacher=args.rademacher,
-            )
-            cnf = layers.CNF(
-                odefunc=odefunc,
-                T=args.time_length,
-                regularization_fns=regularization_fns,
-                solver=args.solver,
-            )
-            return cnf
+            def build_cnf():
+                autoencoder_diffeq = layers.AutoencoderDiffEqNet(
+                    hidden_dims=hidden_dims,
+                    input_shape=data_shape,
+                    strides=strides,
+                    conv=args.conv,
+                    layer_type=args.layer_type,
+                    nonlinearity=args.nonlinearity,
+                )
+                odefunc = layers.AutoencoderODEfunc(
+                    autoencoder_diffeq=autoencoder_diffeq,
+                    divergence_fn=args.divergence_fn,
+                    residual=args.residual,
+                    rademacher=args.rademacher,
+                )
+                cnf = layers.CNF(
+                    odefunc=odefunc,
+                    T=args.time_length,
+                    regularization_fns=regularization_fns,
+                    solver=args.solver,
+                )
+                return cnf
+        else:
+
+            def build_cnf():
+                diffeq = layers.ODEnet(
+                    hidden_dims=hidden_dims,
+                    input_shape=data_shape,
+                    strides=strides,
+                    conv=args.conv,
+                    layer_type=args.layer_type,
+                    nonlinearity=args.nonlinearity,
+                )
+                odefunc = layers.ODEfunc(
+                    diffeq=diffeq,
+                    divergence_fn=args.divergence_fn,
+                    residual=args.residual,
+                    rademacher=args.rademacher,
+                )
+                cnf = layers.CNF(
+                    odefunc=odefunc,
+                    T=args.time_length,
+                    regularization_fns=regularization_fns,
+                    solver=args.solver,
+                )
+                return cnf
+        if args.alpha > 0:
+            chain = [layers.LogitTransform(alpha=args.alpha), build_cnf()]
+        else:
+            chain = [layers.ZeroMeanTransform(), build_cnf()]
+
+        if args.batch_norm:
+            chain.append(layers.MovingBatchNorm2d(data_shape[0]))
     else:
-
-        def build_cnf():
-            diffeq = layers.ODEnet(
-                hidden_dims=hidden_dims,
-                input_shape=data_shape,
-                strides=strides,
-                conv=args.conv,
-                layer_type=args.layer_type,
-                nonlinearity=args.nonlinearity,
-            )
-            odefunc = layers.ODEfunc(
-                diffeq=diffeq,
-                divergence_fn=args.divergence_fn,
-                residual=args.residual,
-                rademacher=args.rademacher,
-            )
-            cnf = layers.CNF(
-                odefunc=odefunc,
-                T=args.time_length,
-                regularization_fns=regularization_fns,
-                solver=args.solver,
-            )
-            return cnf
-    if args.alpha > 0:
-        chain = [layers.LogitTransform(alpha=args.alpha), build_cnf()]
-    else:
-        chain = [layers.ZeroMeanTransform(), build_cnf()]
-
-    if args.batch_norm:
-        chain.append(layers.MovingBatchNorm2d(data_shape[0]))
+        chain = [layers.LogitTransform(alpha=args.alpha)]
+        for i in range(args.num_flows):
+            diffeq = DecoupledDiffEQ(784, 64, 32)
+            odefunc = layers.ODEfunc(diffeq=diffeq, divergence_fn=args.divergence_fn)
+            cnf = layers.CNF(odefunc=odefunc, T=args.time_length)
+            chain.append(cnf)
     model = layers.SequentialFlow(chain)
     #model = torch.nn.DataParallel(model)
 
@@ -375,6 +417,8 @@ if __name__ == "__main__":
                 losses = []
                 logit_losses = []
                 for (x, y) in test_loader:
+                    if not args.conv:
+                        x = x.view(x.shape[0], -1)
                     x = cvt(x)
                     loss, logit_loss, _ = compute_bits_per_dim(x, model)
                     losses.append(loss)
@@ -398,5 +442,5 @@ if __name__ == "__main__":
         with torch.no_grad():
             fig_filename = os.path.join(args.save, "figs", "{:04d}.jpg".format(epoch))
             utils.makedirs(os.path.dirname(fig_filename))
-            generated_samples = model(fixed_z, reverse=True).view(-1, *data_shape)
+            generated_samples = model(fixed_z, reverse=True).view(-1, 1, 28, 28)#*data_shape)
             save_image(generated_samples, fig_filename, nrow=10)
