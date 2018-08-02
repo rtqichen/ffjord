@@ -51,7 +51,7 @@ class ODENVP(nn.Module):
                     initial_size=(c, h, w),
                     idim=self.intermediate_dim,
                     squeeze=(i < self.n_scale - 1),  # don't squeeze last layer
-                    init_layer=layers.LogitTransform(self.alpha) if self.alpha > 0 else layers.Zero  # input transform
+                    init_layer=layers.LogitTransform(self.alpha) if self.alpha > 0 else layers.ZeroMeanTransform()
                     if self.squash_input and i == 0 else None,
                     n_blocks=self.n_blocks,
                     solver=self.solver,
