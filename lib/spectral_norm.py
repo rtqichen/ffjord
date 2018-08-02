@@ -40,7 +40,7 @@ class SpectralNorm(object):
         # recompute weight before every forward()
         module.register_forward_pre_hook(fn)
 
-        return fn
+        return module
 
     def remove(self, module):
         weight = self.compute_weight(module)

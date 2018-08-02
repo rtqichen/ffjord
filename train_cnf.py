@@ -244,20 +244,6 @@ def get_regularization(model, regularization_coeffs):
     return sum(state * coeff for state, coeff in zip(acc_reg_states, regularization_coeffs))
 
 
-def add_spectral_norm(model):
-    def recursive_apply_sn(parent_module):
-        for child_name in list(parent_module._modules.keys()):
-            child_module = parent_module._modules[child_name]
-            classname = child_module.__class__.__name__
-            if classname.find('Conv') != -1 and 'weight' in child_module._parameters:
-                del parent_module._modules[child_name]
-                parent_module.add_module(child_name, spectral_norm.spectral_norm(child_module, 'weight'))
-            else:
-                recursive_apply_sn(child_module)
-
-    recursive_apply_sn(model)
-
-
 if __name__ == "__main__":
 
     # get deivce
@@ -339,9 +325,6 @@ if __name__ == "__main__":
             chain.append(cnf)
     model = layers.SequentialFlow(chain)
     #model = torch.nn.DataParallel(model)
-
-    if args.spectral_norm:
-        add_spectral_norm(model)
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
