@@ -26,6 +26,7 @@ class ODENVP(nn.Module):
         squash_input=True,
         alpha=0.05,
         solver='dopri5',
+        spectral_norm=False
     ):
         super(ODENVP, self).__init__()
         self.n_scale = min(n_scale, self._calc_n_scale(input_size))
@@ -34,6 +35,7 @@ class ODENVP(nn.Module):
         self.squash_input = squash_input
         self.alpha = alpha
         self.solver = solver
+        self.spectral_norm = spectral_norm
 
         if not self.n_scale > 0:
             raise ValueError('Could not compute number of scales for input of' 'size (%d,%d,%d,%d)' % input_size)
@@ -55,6 +57,7 @@ class ODENVP(nn.Module):
                     if self.squash_input and i == 0 else None,
                     n_blocks=self.n_blocks,
                     solver=self.solver,
+                    spectral_norm=self.spectral_norm
                 )
             )
             c, h, w = c * 2, h // 2, w // 2
@@ -141,13 +144,14 @@ class StackedCNFLayers(layers.SequentialFlow):
         init_layer=None,
         n_blocks=1,
         solver='dopri5',
+        spectral_norm=False
     ):
         chain = []
         if init_layer is not None:
             chain.append(init_layer)
 
         def _make_odefunc(size):
-            net = ODEnet((idim,), size, (1, 1), True, layer_type="ignore")
+            net = ODEnet((idim,), size, (1, 1), True, layer_type="concat", use_spectral_norm=spectral_norm)
             f = layers.ODEfunc(net)
             return f
 

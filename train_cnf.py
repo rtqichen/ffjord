@@ -47,6 +47,7 @@ parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, Fal
 parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
 parser.add_argument('--autoencode', type=eval, default=False, choices=[True, False])
 parser.add_argument('--rademacher', type=eval, default=False, choices=[True, False])
+parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
 
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
@@ -290,7 +291,7 @@ if __name__ == "__main__":
     # if args.batch_norm:
     #     chain.append(layers.MovingBatchNorm2d(data_shape[0]))
     # model = layers.SequentialFlow(chain)
-    model = odenvp.ODENVP((args.batch_size, *data_shape), n_blocks=args.num_blocks, intermediate_dim=args.int_dim, alpha=args.alpha)
+    model = odenvp.ODENVP((args.batch_size, *data_shape), n_blocks=args.num_blocks, intermediate_dim=args.int_dim, alpha=args.alpha, spectral_norm=args.spectral_norm)
     # for k in model.state_dict():
     #     v = model.state_dict().get(k)
     #     print(k, v.size())
