@@ -1,7 +1,8 @@
 from inspect import signature
+import torch
 import torch.nn as nn
 
-__all__ = ["diffeq_wrapper", "reshape_wrapper"]
+__all__ = ["diffeq_wrapper", "reshape_wrapper", "fourier_wrapper"]
 
 
 class DiffEqWrapper(nn.Module):
@@ -44,3 +45,22 @@ class ReshapeDiffEq(nn.Module):
 
 def reshape_wrapper(input_shape, layer):
     return ReshapeDiffEq(input_shape, layer)
+
+
+class FourierWrapper(nn.Module):
+    def __init__(self, net):
+        super(FourierWrapper, self).__init__()
+        assert len(signature(net.forward).parameters) == 2, "use diffeq_wrapper before reshape_wrapper."
+        self.net = net
+
+    def forward(self, t, x):
+        hidden = torch.rfft(x, 2, onesided=True)
+        b, c, f_h, f_w, _ = hidden.shape
+        hidden = hidden.permute(0, 1, 4, 2, 3).view(b, c * 2, f_h, f_w)
+        hidden = self.net(t, hidden).view(b, c, 2, f_h, f_w).permute(0, 1, 3, 4, 2)
+        hidden = torch.irfft(hidden, 2, onesided=True, signal_sizes=x.shape[-2:])
+        return hidden
+
+
+def fourier_wrapper(layer):
+    return FourierWrapper(layer)
