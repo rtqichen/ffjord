@@ -47,6 +47,7 @@ parser.add_argument('--residual', type=eval, default=False, choices=[True, False
 parser.add_argument('--autoencode', type=eval, default=False, choices=[True, False])
 parser.add_argument('--rademacher', type=eval, default=False, choices=[True, False])
 parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
+parser.add_argument('--multiscale', type=eval, default=False, choices=[True, False])
 
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
@@ -150,27 +151,10 @@ def get_dataset(args):
 
 def compute_bits_per_dim(x, model, regularization_coeffs=None):
     zero = torch.zeros(x.shape[0], 1).to(x)
-    #
-    # # preprocessing layer
-    # logit_x, delta_logpx_logit_tranform = model.chain[0](x, zero)
-    #
-    # # the rest of the layers
-    # z, delta_logp = model(logit_x, zero, inds=range(1, len(model.chain)))
-    #
-    # # compute log p(z)
-    # logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)
-    #
-    # # compute log p(x)
-    # logpx_logit = logpz - delta_logp
-    # logpx = logpx_logit - delta_logpx_logit_tranform
+    z, delta_logp = model(x, zero)  # run model forward
 
-
-    z, delta_logp = model(x, zero)
-
-    logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)
-    logpx = logpz - delta_logp  # logpx_logit - delta_logpx_logit_tranform
-
-
+    logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)  # logp(z)
+    logpx = logpz - delta_logp
 
     logpx_per_dim = torch.sum(logpx) / x.nelement()  # averaged over batches
     bits_per_dim = -(logpx_per_dim - np.log(256)) / np.log(2)
@@ -184,12 +168,16 @@ def compute_bits_per_dim(x, model, regularization_coeffs=None):
 
 
 def count_nfe(model):
-    return 0
     num_evals = 0
-    for layer in model.chain:
-        if isinstance(layer, layers.CNF):
-            num_evals += layer.num_evals()
-    return num_evals
+    if isinstance(model, layers.SequentialFlow):
+        for layer in model.chain:
+            if isinstance(layer, layers.CNF):
+                num_evals += layer.num_evals()
+        return num_evals
+    elif isinstance(model, odenvp.ODENVP):
+        for tform in model.transforms:
+            num_evals += count_nfe(tform)
+        return num_evals
 
 
 def count_parameters(model):
@@ -221,6 +209,71 @@ def get_regularization(model, regularization_coeffs):
     return sum(state * coeff for state, coeff in zip(acc_reg_states, regularization_coeffs))
 
 
+def create_model(args):
+    if args.multiscale:
+        model = odenvp.ODENVP(
+            (args.batch_size, *data_shape),
+            n_blocks=args.num_blocks,
+            intermediate_dims=hidden_dims,
+            alpha=args.alpha,
+            spectral_norm=args.spectral_norm
+        )
+    else:
+        # neural net that parameterizes the velocity field
+        if args.autoencode:
+            def build_cnf():
+                autoencoder_diffeq = layers.AutoencoderDiffEqNet(
+                    hidden_dims=hidden_dims,
+                    input_shape=data_shape,
+                    strides=strides,
+                    conv=args.conv,
+                    layer_type=args.layer_type,
+                    nonlinearity=args.nonlinearity,
+                )
+                odefunc = layers.AutoencoderODEfunc(
+                    autoencoder_diffeq=autoencoder_diffeq,
+                    divergence_fn=args.divergence_fn,
+                    residual=args.residual,
+                    rademacher=args.rademacher,
+                )
+                cnf = layers.CNF(
+                    odefunc=odefunc,
+                    T=args.time_length,
+                    regularization_fns=regularization_fns,
+                    solver=args.solver,
+                )
+                return cnf
+        else:
+            def build_cnf():
+                diffeq = layers.ODEnet(
+                    hidden_dims=hidden_dims,
+                    input_shape=data_shape,
+                    strides=strides,
+                    conv=args.conv,
+                    layer_type=args.layer_type,
+                    nonlinearity=args.nonlinearity,
+                )
+                odefunc = layers.ODEfunc(
+                    diffeq=diffeq,
+                    divergence_fn=args.divergence_fn,
+                    residual=args.residual,
+                    rademacher=args.rademacher,
+                )
+                cnf = layers.CNF(
+                    odefunc=odefunc,
+                    T=args.time_length,
+                    regularization_fns=regularization_fns,
+                    solver=args.solver,
+                )
+                return cnf
+
+        chain = [layers.LogitTransform(alpha=args.alpha)] + [build_cnf() for i in range(args.num_blocks)]
+        if args.batch_norm:
+            chain.append(layers.MovingBatchNorm2d(data_shape[0]))
+        model = layers.SequentialFlow(chain)
+    return model
+
+
 if __name__ == "__main__":
 
     # get deivce
@@ -235,67 +288,7 @@ if __name__ == "__main__":
 
     # build model
     regularization_fns, regularization_coeffs = create_regularization_fns()
-
-    # # neural net that parameterizes the velocity field
-    # if args.autoencode:
-    #
-    #     def build_cnf():
-    #         autoencoder_diffeq = layers.AutoencoderDiffEqNet(
-    #             hidden_dims=hidden_dims,
-    #             input_shape=data_shape,
-    #             strides=strides,
-    #             conv=args.conv,
-    #             layer_type=args.layer_type,
-    #             nonlinearity=args.nonlinearity,
-    #         )
-    #         odefunc = layers.AutoencoderODEfunc(
-    #             autoencoder_diffeq=autoencoder_diffeq,
-    #             divergence_fn=args.divergence_fn,
-    #             residual=args.residual,
-    #             rademacher=args.rademacher,
-    #         )
-    #         cnf = layers.CNF(
-    #             odefunc=odefunc,
-    #             T=args.time_length,
-    #             regularization_fns=regularization_fns,
-    #             solver=args.solver,
-    #         )
-    #         return cnf
-    # else:
-    #     print(strides, data_shape, hidden_dims)
-    #     def build_cnf():
-    #         diffeq = layers.ODEnet(
-    #             hidden_dims=hidden_dims,
-    #             input_shape=data_shape,
-    #             strides=strides,
-    #             conv=args.conv,
-    #             layer_type=args.layer_type,
-    #             nonlinearity=args.nonlinearity,
-    #         )
-    #         odefunc = layers.ODEfunc(
-    #             diffeq=diffeq,
-    #             divergence_fn=args.divergence_fn,
-    #             residual=args.residual,
-    #             rademacher=args.rademacher,
-    #         )
-    #         cnf = layers.CNF(
-    #             odefunc=odefunc,
-    #             T=args.time_length,
-    #             regularization_fns=regularization_fns,
-    #             solver=args.solver,
-    #         )
-    #         return cnf
-    #
-    # chain = [layers.LogitTransform(alpha=args.alpha)] + [build_cnf() for i in range(args.num_blocks)]
-    # if args.batch_norm:
-    #     chain.append(layers.MovingBatchNorm2d(data_shape[0]))
-    # model = layers.SequentialFlow(chain)
-    model = odenvp.ODENVP((args.batch_size, *data_shape), n_blocks=args.num_blocks, intermediate_dims=hidden_dims, alpha=args.alpha, spectral_norm=args.spectral_norm)
-    # for k in model.state_dict():
-    #     v = model.state_dict().get(k)
-    #     print(k, v.size())
-    # 1/0
-    model = torch.nn.DataParallel(model)
+    model = create_model(args)
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
