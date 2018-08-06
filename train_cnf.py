@@ -96,7 +96,6 @@ def standard_normal_logprob(z):
 def update_lr(optimizer, itr):
     iter_frac = min(float(itr + 1) / args.warmup_iters, 1.0)
     lr = args.lr * iter_frac
-    print(lr)
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
 
