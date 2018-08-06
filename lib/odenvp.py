@@ -22,7 +22,7 @@ class ODENVP(nn.Module):
         input_size,
         n_scale=float('inf'),
         n_blocks=2,
-        intermediate_dim=32,
+        intermediate_dims=(32,),
         squash_input=True,
         alpha=0.05,
         solver='dopri5',
@@ -31,7 +31,7 @@ class ODENVP(nn.Module):
         super(ODENVP, self).__init__()
         self.n_scale = min(n_scale, self._calc_n_scale(input_size))
         self.n_blocks = n_blocks
-        self.intermediate_dim = intermediate_dim
+        self.intermediate_dims = intermediate_dims
         self.squash_input = squash_input
         self.alpha = alpha
         self.solver = solver
@@ -51,7 +51,7 @@ class ODENVP(nn.Module):
             transforms.append(
                 StackedCNFLayers(
                     initial_size=(c, h, w),
-                    idim=self.intermediate_dim,
+                    idims=self.intermediate_dims,
                     squeeze=(i < self.n_scale - 1),  # don't squeeze last layer
                     init_layer=layers.LogitTransform(self.alpha) if self.alpha > 0 else layers.ZeroMeanTransform()
                     if self.squash_input and i == 0 else None,
@@ -139,19 +139,20 @@ class StackedCNFLayers(layers.SequentialFlow):
     def __init__(
         self,
         initial_size,
-        idim=32,
+        idims=(32,),
         squeeze=True,
         init_layer=None,
         n_blocks=1,
         solver='dopri5',
         spectral_norm=False
     ):
+        strides = tuple([1] + [1 for _ in idims])
         chain = []
         if init_layer is not None:
             chain.append(init_layer)
 
         def _make_odefunc(size):
-            net = ODEnet((idim,), size, (1, 1), True, layer_type="concat", use_spectral_norm=spectral_norm)
+            net = ODEnet(idims, size, strides, True, layer_type="concat", use_spectral_norm=spectral_norm)
             f = layers.ODEfunc(net)
             return f
 

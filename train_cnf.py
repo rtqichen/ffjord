@@ -60,7 +60,6 @@ parser.add_argument("--log_freq", type=int, default=10)
 parser.add_argument("--gpu", type=int, default=0)
 
 #NVP params
-parser.add_argument("--int_dim", type=int, default=32)
 parser.add_argument("--num_blocks", type=int, default=1)
 
 
@@ -291,7 +290,7 @@ if __name__ == "__main__":
     # if args.batch_norm:
     #     chain.append(layers.MovingBatchNorm2d(data_shape[0]))
     # model = layers.SequentialFlow(chain)
-    model = odenvp.ODENVP((args.batch_size, *data_shape), n_blocks=args.num_blocks, intermediate_dim=args.int_dim, alpha=args.alpha, spectral_norm=args.spectral_norm)
+    model = odenvp.ODENVP((args.batch_size, *data_shape), n_blocks=args.num_blocks, intermediate_dims=hidden_dims, alpha=args.alpha, spectral_norm=args.spectral_norm)
     # for k in model.state_dict():
     #     v = model.state_dict().get(k)
     #     print(k, v.size())
