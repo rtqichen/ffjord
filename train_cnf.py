@@ -37,10 +37,9 @@ parser.add_argument("--time_length", type=float, default=None)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
 parser.add_argument("--batch_size", type=int, default=200)
-parser.add_argument("--lr_max", type=float, default=1e-3)
-parser.add_argument("--lr_min", type=float, default=1e-3)
-parser.add_argument("--lr_interval", type=float, default=2000)
-parser.add_argument("--weight_decay", type=float, default=1e-6)
+parser.add_argument("--lr", type=float, default=1e-3)
+parser.add_argument("--warmup_iters", type=float, default=1000)
+parser.add_argument("--weight_decay", type=float, default=0.0)
 
 parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
 parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
@@ -95,7 +94,9 @@ def standard_normal_logprob(z):
 
 
 def update_lr(optimizer, itr):
-    lr = args.lr_min + 0.5 * (args.lr_max - args.lr_min) * (1 + np.cos(itr / args.num_epochs * np.pi))
+    iter_frac = min(float(itr + 1) / args.warmup_iters, 1.0)
+    lr = args.lr * iter_frac
+    print(lr)
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
 
@@ -302,7 +303,7 @@ if __name__ == "__main__":
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
 
     # optimizer
-    optimizer = optim.Adam(model.parameters(), lr=args.lr_max, weight_decay=args.weight_decay)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # restore parameters
     if args.resume is not None:
