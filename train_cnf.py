@@ -267,7 +267,7 @@ def create_model(args):
                 )
                 return cnf
 
-        chain = [layers.LogitTransform(alpha=args.alpha)] + [build_cnf() for i in range(args.num_blocks)]
+        chain = [layers.LogitTransform(alpha=args.alpha)] + [build_cnf() for _ in range(args.num_blocks)]
         if args.batch_norm:
             chain.append(layers.MovingBatchNorm2d(data_shape[0]))
         model = layers.SequentialFlow(chain)
