@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from ..spectral_norm import spectral_norm
 
 
 def weights_init(m):
@@ -9,8 +10,15 @@ def weights_init(m):
         nn.init.constant_(m.weight, 0)
         nn.init.normal_(m.bias, 0, 0.01)
 
+class CNFLayer(nn.Module):
+    def __init__(self):
+        super(CNFLayer, self).__init__()
 
-class HyperLinear(nn.Module):
+    def apply_spectral_norm(self):
+        self._layer = spectral_norm(self._layer)
+
+
+class HyperLinear(CNFLayer):
     def __init__(self, dim_in, dim_out, hypernet_dim=8, n_hidden=1, activation=nn.Tanh):
         super(HyperLinear, self).__init__()
         self.dim_in = dim_in
@@ -32,8 +40,11 @@ class HyperLinear(nn.Module):
         w = params[self.dim_out:].view(self.dim_out, self.dim_in)
         return F.linear(x, w, b)
 
+    def apply_spectral_norm(self):
+        print(f"Warning {type(self)} does not support spectral norm")
 
-class IgnoreLinear(nn.Module):
+
+class IgnoreLinear(CNFLayer):
     def __init__(self, dim_in, dim_out):
         super(IgnoreLinear, self).__init__()
         self._layer = nn.Linear(dim_in, dim_out)
@@ -42,7 +53,7 @@ class IgnoreLinear(nn.Module):
         return self._layer(x)
 
 
-class ConcatLinear(nn.Module):
+class ConcatLinear(CNFLayer):
     def __init__(self, dim_in, dim_out):
         super(ConcatLinear, self).__init__()
         self._layer = nn.Linear(dim_in + 1, dim_out)
@@ -53,7 +64,7 @@ class ConcatLinear(nn.Module):
         return self._layer(ttx)
 
 
-class HyperConv2d(nn.Module):
+class HyperConv2d(CNFLayer):
     def __init__(self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False):
         super(HyperConv2d, self).__init__()
         assert dim_in % groups == 0 and dim_out % groups == 0, "dim_in and dim_out must both be divisible by groups."
@@ -88,8 +99,11 @@ class HyperConv2d(nn.Module):
             dilation=self.dilation
         )
 
+    def apply_spectral_norm(self):
+        print(f"Warning {type(self)} does not support spectral norm")
 
-class IgnoreConv2d(nn.Module):
+
+class IgnoreConv2d(CNFLayer):
     def __init__(self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False):
         super(IgnoreConv2d, self).__init__()
         module = nn.ConvTranspose2d if transpose else nn.Conv2d
@@ -102,7 +116,7 @@ class IgnoreConv2d(nn.Module):
         return self._layer(x)
 
 
-class ConcatConv2d(nn.Module):
+class ConcatConv2d(CNFLayer):
     def __init__(self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False):
         super(ConcatConv2d, self).__init__()
         module = nn.ConvTranspose2d if transpose else nn.Conv2d
@@ -117,7 +131,7 @@ class ConcatConv2d(nn.Module):
         return self._layer(ttx)
 
 
-class ConcatCoordConv2d(nn.Module):
+class ConcatCoordConv2d(CNFLayer):
     def __init__(self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False):
         super(ConcatCoordConv2d, self).__init__()
         module = nn.ConvTranspose2d if transpose else nn.Conv2d
@@ -135,7 +149,7 @@ class ConcatCoordConv2d(nn.Module):
         return self._layer(x_aug)
 
 
-class GatedLinear(nn.Module):
+class GatedLinear(CNFLayer):
     def __init__(self, in_features, out_features):
         super(GatedLinear, self).__init__()
         self.layer_f = nn.Linear(in_features, out_features)
@@ -146,8 +160,12 @@ class GatedLinear(nn.Module):
         g = torch.sigmoid(self.layer_g(x))
         return f * g
 
+    def apply_spectral_norm(self):
+        self.layer_f = spectral_norm(self.layer_f)
+        self.layer_g = spectral_norm(self.layer_g)
 
-class GatedConv(nn.Module):
+
+class GatedConv(CNFLayer):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, groups=1):
         super(GatedConv, self).__init__()
         self.layer_f = nn.Conv2d(
@@ -162,8 +180,12 @@ class GatedConv(nn.Module):
         g = torch.sigmoid(self.layer_g(x))
         return f * g
 
+    def apply_spectral_norm(self):
+        self.layer_f = spectral_norm(self.layer_f)
+        self.layer_g = spectral_norm(self.layer_g)
 
-class GatedConvTranspose(nn.Module):
+
+class GatedConvTranspose(CNFLayer):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, output_padding=0, groups=1):
         super(GatedConvTranspose, self).__init__()
         self.layer_f = nn.ConvTranspose2d(
@@ -180,8 +202,12 @@ class GatedConvTranspose(nn.Module):
         g = torch.sigmoid(self.layer_g(x))
         return f * g
 
+    def apply_spectral_norm(self):
+        self.layer_f = spectral_norm(self.layer_f)
+        self.layer_g = spectral_norm(self.layer_g)
 
-class BlendLinear(nn.Module):
+
+class BlendLinear(CNFLayer):
     def __init__(self, dim_in, dim_out, layer_type=nn.Linear, **unused_kwargs):
         super(BlendLinear, self).__init__()
         self._layer0 = layer_type(dim_in, dim_out)
@@ -192,8 +218,12 @@ class BlendLinear(nn.Module):
         y1 = self._layer1(x)
         return y0 + (y1 - y0) * t
 
+    def apply_spectral_norm(self):
+        self._layer0 = spectral_norm(self._layer0)
+        self._layer1 = spectral_norm(self._layer1)
 
-class BlendConv2d(nn.Module):
+
+class BlendConv2d(CNFLayer):
     def __init__(
         self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False,
         **unused_kwargs
@@ -213,3 +243,7 @@ class BlendConv2d(nn.Module):
         y0 = self._layer0(x)
         y1 = self._layer1(x)
         return y0 + (y1 - y0) * t
+
+    def apply_spectral_norm(self):
+        self._layer0 = spectral_norm(self._layer0)
+        self._layer1 = spectral_norm(self._layer1)

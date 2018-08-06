@@ -6,7 +6,6 @@ import torch.nn.functional as F
 
 from . import diffeq_layers
 from .diffeq_layers import diffeq_wrapper
-from ..spectral_norm import spectral_norm
 
 __all__ = ["ODEnet", "AutoencoderDiffEqNet", "ODEfunc", "AutoencoderODEfunc"]
 
@@ -37,7 +36,6 @@ class ODEnet(nn.Module):
     """
     Helper class to make neural nets for use in continuous normalizing flows
     """
-
     def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus", use_spectral_norm=False):
         super(ODEnet, self).__init__()
         assert layer_type in ("ignore", "hyper", "concat", "concatcoord", "blend")
@@ -81,7 +79,7 @@ class ODEnet(nn.Module):
 
             layer = base_layer(hidden_shape[0], dim_out, **layer_kwargs)
             if use_spectral_norm:
-                layer._layer = spectral_norm(layer._layer)
+                layer.apply_spectral_norm()
             layers.append(layer)
 
             hidden_shape = list(copy.copy(hidden_shape))
@@ -107,7 +105,6 @@ class AutoencoderDiffEqNet(nn.Module):
     """
     Helper class to make neural nets for use in continuous normalizing flows
     """
-
     def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus"):
         super(AutoencoderDiffEqNet, self).__init__()
         assert layer_type in ("ignore", "hyper", "concat", "concatcoord", "blend")
