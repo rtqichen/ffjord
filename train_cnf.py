@@ -219,7 +219,8 @@ def create_model(args):
             alpha=args.alpha,
             spectral_norm=args.spectral_norm,
             solver=args.solver,
-            step_size=args.step_size
+            step_size=args.step_size,
+            time_length=args.time_length
         )
     else:
         # neural net that parameterizes the velocity field
