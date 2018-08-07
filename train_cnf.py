@@ -248,6 +248,8 @@ def create_model(args):
             n_blocks=args.num_blocks,
             intermediate_dims=hidden_dims,
             alpha=args.alpha,
+            time_length=args.time_length,
+            rademacher=args.rademacher
         )
     else:
         if args.autoencode:
@@ -345,7 +347,8 @@ if __name__ == "__main__":
                     if torch.is_tensor(v):
                         state[k] = cvt(v)
 
-    model = torch.nn.DataParallel(model).cuda()
+    if torch.cuda.is_available():
+        model = torch.nn.DataParallel(model).cuda()
 
     # For visualization.
     fixed_z = cvt(torch.randn(100, *data_shape))
