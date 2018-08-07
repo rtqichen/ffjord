@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..spectral_norm import spectral_norm
+from torch.nn.utils.spectral_norm import spectral_norm
 
 
 def weights_init(m):
@@ -9,6 +9,7 @@ def weights_init(m):
     if classname.find('Linear') != -1 or classname.find('Conv') != -1:
         nn.init.constant_(m.weight, 0)
         nn.init.normal_(m.bias, 0, 0.01)
+
 
 class CNFLayer(nn.Module):
     def __init__(self):
