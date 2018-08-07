@@ -30,6 +30,7 @@ parser.add_argument(
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
 parser.add_argument('--solver', type=str, default='dopri5', choices=["dopri5", "bdf", "rk4", "midpoint"])
+parser.add_argument("--step_size", type=float, default=.1, help="L2 on dynamics.")
 
 parser.add_argument("--imagesize", type=int, default=None)
 parser.add_argument("--alpha", type=float, default=1e-6)
@@ -216,7 +217,9 @@ def create_model(args):
             n_blocks=args.num_blocks,
             intermediate_dims=hidden_dims,
             alpha=args.alpha,
-            spectral_norm=args.spectral_norm
+            spectral_norm=args.spectral_norm,
+            solver=args.solver,
+            step_size=args.step_size
         )
     else:
         # neural net that parameterizes the velocity field
