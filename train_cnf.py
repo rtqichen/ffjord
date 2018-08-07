@@ -9,6 +9,7 @@ import torch.optim as optim
 import torchvision.datasets as dset
 import torchvision.transforms as tforms
 from torchvision.utils import save_image
+from torch.nn.utils.spectral_norm import spectral_norm
 
 import lib.layers as layers
 import lib.layers.wrappers.cnf_regularization as reg_lib
@@ -208,10 +209,28 @@ def get_regularization(model, regularization_coeffs):
     return sum(state * coeff for state, coeff in zip(acc_reg_states, regularization_coeffs))
 
 
+def add_spectral_norm(model):
+    """Applies spectral norm to all modules within the scope of a CNF."""
+
+    def apply_spectral_norm(module):
+        if 'weight' in module._parameters:
+            logger.info("Adding spectral norm to {}".format(module))
+            spectral_norm(module, 'weight')
+
+    def find_cnf(module):
+        if isinstance(module, layers.CNF):
+            module.apply(apply_spectral_norm)
+        else:
+            for child in module.children():
+                find_cnf(child)
+
+    find_cnf(model)
+
+
 def create_model(args):
     if args.multiscale:
         model = odenvp.ODENVP((args.batch_size, *data_shape), n_blocks=args.num_blocks, intermediate_dims=hidden_dims,
-                              alpha=args.alpha, spectral_norm=args.spectral_norm)
+                              alpha=args.alpha)
     else:
         if args.autoencode:
 
@@ -284,6 +303,9 @@ if __name__ == "__main__":
     # build model
     regularization_fns, regularization_coeffs = create_regularization_fns()
     model = create_model(args)
+
+    if args.spectral_norm:
+        add_spectral_norm(model)
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
