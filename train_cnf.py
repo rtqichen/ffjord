@@ -59,7 +59,7 @@ parser.add_argument("--save", type=str, default="experiments/cnf")
 parser.add_argument("--val_freq", type=int, default=1)
 parser.add_argument("--log_freq", type=int, default=10)
 
-#NVP params
+# ODE-NVP params
 parser.add_argument("--num_blocks", type=int, default=1)
 
 args = parser.parse_args()

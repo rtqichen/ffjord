@@ -54,7 +54,7 @@ class ODENVP(nn.Module):
                     initial_size=(c, h, w),
                     idims=self.intermediate_dims,
                     squeeze=(i < self.n_scale - 1),  # don't squeeze last layer
-                    init_layer=layers.LogitTransform(self.alpha) if self.alpha > 0 else layers.ZeroMeanTransform()
+                    init_layer=(layers.LogitTransform(self.alpha) if self.alpha > 0 else layers.ZeroMeanTransform())
                     if self.squash_input and i == 0 else None,
                     n_blocks=self.n_blocks,
                     solver=self.solver,
@@ -163,13 +163,3 @@ class StackedCNFLayers(layers.SequentialFlow):
             chain += [layers.CNF(_make_odefunc(initial_size), solver=solver, T=1.) for _ in range(n_blocks)]
 
         super(StackedCNFLayers, self).__init__(chain)
-
-
-if __name__ == "__main__":
-    f = ODENVP((32, 1, 28, 28),)
-    z = torch.randn(32, 1, 28, 28)
-    z = torch.clamp(z, 0, 1)
-    print(f)
-    out = f(z)
-    1 / 0
-    print(f)

@@ -29,6 +29,7 @@ class CNF(nn.Module):
         self.solver = solver
 
     def forward(self, z, logpz=None, integration_times=None, reverse=False, atol=1e-6, rtol=1e-5):
+
         if logpz is None:
             _logpz = torch.zeros(z.shape[0], 1).to(z)
         else:
