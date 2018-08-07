@@ -34,7 +34,7 @@ parser.add_argument("--step_size", type=float, default=.1, help="L2 on dynamics.
 
 parser.add_argument("--imagesize", type=int, default=None)
 parser.add_argument("--alpha", type=float, default=1e-6)
-parser.add_argument("--time_length", type=float, default=None)
+parser.add_argument("--time_length", type=float, default=1.)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
 parser.add_argument("--batch_size", type=int, default=200)
