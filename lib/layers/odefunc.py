@@ -36,8 +36,7 @@ class ODEnet(nn.Module):
     """
     Helper class to make neural nets for use in continuous normalizing flows
     """
-
-    def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus"):
+    def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus", use_spectral_norm=False):
         super(ODEnet, self).__init__()
         assert layer_type in ("ignore", "hyper", "concat", "concatcoord", "blend")
         assert nonlinearity in ("tanh", "relu", "softplus", "elu")
@@ -78,7 +77,10 @@ class ODEnet(nn.Module):
             else:
                 raise ValueError('Unsupported stride: {}'.format(stride))
 
-            layers.append(base_layer(hidden_shape[0], dim_out, **layer_kwargs))
+            layer = base_layer(hidden_shape[0], dim_out, **layer_kwargs)
+            if use_spectral_norm:
+                layer.apply_spectral_norm()
+            layers.append(layer)
 
             hidden_shape = list(copy.copy(hidden_shape))
             hidden_shape[0] = dim_out
@@ -103,7 +105,6 @@ class AutoencoderDiffEqNet(nn.Module):
     """
     Helper class to make neural nets for use in continuous normalizing flows
     """
-
     def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus"):
         super(AutoencoderDiffEqNet, self).__init__()
         assert layer_type in ("ignore", "hyper", "concat", "concatcoord", "blend")

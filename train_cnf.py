@@ -12,8 +12,8 @@ from torchvision.utils import save_image
 
 import lib.layers as layers
 import lib.layers.wrappers.cnf_regularization as reg_lib
-import lib.spectral_norm as spectral_norm
 import lib.utils as utils
+import lib.odenvp as odenvp
 
 # go fast boi!!
 torch.backends.cudnn.benchmark = True
@@ -30,29 +30,29 @@ parser.add_argument(
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
 parser.add_argument('--solver', type=str, default='dopri5', choices=["dopri5", "bdf", "rk4", "midpoint"])
+parser.add_argument("--step_size", type=float, default=.1, help="L2 on dynamics.")
 
 parser.add_argument("--imagesize", type=int, default=None)
 parser.add_argument("--alpha", type=float, default=1e-6)
 parser.add_argument("--time_length", type=float, default=None)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
-parser.add_argument("--data_size", type=int, default=10000)
 parser.add_argument("--batch_size", type=int, default=200)
-parser.add_argument("--lr_max", type=float, default=1e-3)
-parser.add_argument("--lr_min", type=float, default=1e-3)
-parser.add_argument("--lr_interval", type=float, default=2000)
-parser.add_argument("--weight_decay", type=float, default=1e-6)
+parser.add_argument("--lr", type=float, default=1e-3)
+parser.add_argument("--warmup_iters", type=float, default=1000)
+parser.add_argument("--weight_decay", type=float, default=0.0)
 
 parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
 parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
 parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
 parser.add_argument('--autoencode', type=eval, default=False, choices=[True, False])
 parser.add_argument('--rademacher', type=eval, default=False, choices=[True, False])
+parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
+parser.add_argument('--multiscale', type=eval, default=False, choices=[True, False])
 
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
 parser.add_argument("--dl2_coeff", type=float, default=0, help="Directional L2 on dynamics.")
-parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
 
 parser.add_argument("--begin_epoch", type=int, default=1)
 parser.add_argument("--resume", type=str, default=None)
@@ -60,6 +60,11 @@ parser.add_argument("--save", type=str, default="experiments/cnf")
 parser.add_argument("--val_freq", type=int, default=1)
 parser.add_argument("--log_freq", type=int, default=10)
 parser.add_argument("--gpu", type=int, default=0)
+
+#NVP params
+parser.add_argument("--num_blocks", type=int, default=1)
+
+
 args = parser.parse_args()
 
 # logger
@@ -90,7 +95,8 @@ def standard_normal_logprob(z):
 
 
 def update_lr(optimizer, itr):
-    lr = args.lr_min + 0.5 * (args.lr_max - args.lr_min) * (1 + np.cos(itr / args.num_epochs * np.pi))
+    iter_frac = min(float(itr + 1) / args.warmup_iters, 1.0)
+    lr = args.lr * iter_frac
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
 
@@ -134,6 +140,8 @@ def get_dataset(args):
             ])
         )
     data_shape = (im_dim, im_size, im_size)
+    if not args.conv:
+        data_shape = (im_dim * im_size * im_size, )
 
     train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
@@ -144,19 +152,10 @@ def get_dataset(args):
 
 def compute_bits_per_dim(x, model, regularization_coeffs=None):
     zero = torch.zeros(x.shape[0], 1).to(x)
+    z, delta_logp = model(x, zero)  # run model forward
 
-    # preprocessing layer
-    logit_x, delta_logpx_logit_tranform = model.chain[0](x, zero)
-
-    # the rest of the layers
-    z, delta_logp = model(logit_x, zero, inds=range(1, len(model.chain)))
-
-    # compute log p(z)
-    logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)
-
-    # compute log p(x)
-    logpx_logit = logpz - delta_logp
-    logpx = logpx_logit - delta_logpx_logit_tranform
+    logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)  # logp(z)
+    logpx = logpz - delta_logp
 
     logpx_per_dim = torch.sum(logpx) / x.nelement()  # averaged over batches
     bits_per_dim = -(logpx_per_dim - np.log(256)) / np.log(2)
@@ -166,15 +165,20 @@ def compute_bits_per_dim(x, model, regularization_coeffs=None):
     else:
         regularization = torch.tensor(0.).to(bits_per_dim)
 
-    return bits_per_dim, torch.mean(logpx_logit), regularization
+    return bits_per_dim, torch.tensor(0.0), regularization
 
 
 def count_nfe(model):
     num_evals = 0
-    for layer in model.chain:
-        if isinstance(layer, layers.CNF):
-            num_evals += layer.num_evals()
-    return num_evals
+    if isinstance(model, layers.SequentialFlow):
+        for layer in model.chain:
+            if isinstance(layer, layers.CNF):
+                num_evals += layer.num_evals()
+        return num_evals
+    elif isinstance(model, odenvp.ODENVP):
+        for tform in model.transforms:
+            num_evals += count_nfe(tform)
+        return num_evals
 
 
 def count_parameters(model):
@@ -206,18 +210,71 @@ def get_regularization(model, regularization_coeffs):
     return sum(state * coeff for state, coeff in zip(acc_reg_states, regularization_coeffs))
 
 
-def add_spectral_norm(model):
-    def recursive_apply_sn(parent_module):
-        for child_name in list(parent_module._modules.keys()):
-            child_module = parent_module._modules[child_name]
-            classname = child_module.__class__.__name__
-            if classname.find('Conv') != -1 and 'weight' in child_module._parameters:
-                del parent_module._modules[child_name]
-                parent_module.add_module(child_name, spectral_norm.spectral_norm(child_module, 'weight'))
-            else:
-                recursive_apply_sn(child_module)
+def create_model(args):
+    if args.multiscale:
+        model = odenvp.ODENVP(
+            (args.batch_size, *data_shape),
+            n_blocks=args.num_blocks,
+            intermediate_dims=hidden_dims,
+            alpha=args.alpha,
+            spectral_norm=args.spectral_norm,
+            solver=args.solver,
+            step_size=args.step_size
+        )
+    else:
+        # neural net that parameterizes the velocity field
+        if args.autoencode:
+            def build_cnf():
+                autoencoder_diffeq = layers.AutoencoderDiffEqNet(
+                    hidden_dims=hidden_dims,
+                    input_shape=data_shape,
+                    strides=strides,
+                    conv=args.conv,
+                    layer_type=args.layer_type,
+                    nonlinearity=args.nonlinearity,
+                )
+                odefunc = layers.AutoencoderODEfunc(
+                    autoencoder_diffeq=autoencoder_diffeq,
+                    divergence_fn=args.divergence_fn,
+                    residual=args.residual,
+                    rademacher=args.rademacher,
+                )
+                cnf = layers.CNF(
+                    odefunc=odefunc,
+                    T=args.time_length,
+                    regularization_fns=regularization_fns,
+                    solver=args.solver,
+                )
+                return cnf
+        else:
+            def build_cnf():
+                diffeq = layers.ODEnet(
+                    hidden_dims=hidden_dims,
+                    input_shape=data_shape,
+                    strides=strides,
+                    conv=args.conv,
+                    layer_type=args.layer_type,
+                    nonlinearity=args.nonlinearity,
+                )
+                odefunc = layers.ODEfunc(
+                    diffeq=diffeq,
+                    divergence_fn=args.divergence_fn,
+                    residual=args.residual,
+                    rademacher=args.rademacher,
+                )
+                cnf = layers.CNF(
+                    odefunc=odefunc,
+                    T=args.time_length,
+                    regularization_fns=regularization_fns,
+                    solver=args.solver,
+                )
+                return cnf
 
-    recursive_apply_sn(model)
+        chain = [layers.LogitTransform(alpha=args.alpha)] + [build_cnf() for _ in range(args.num_blocks)]
+        if args.batch_norm:
+            chain.append(layers.MovingBatchNorm2d(data_shape[0]))
+        model = layers.SequentialFlow(chain)
+    return model
 
 
 if __name__ == "__main__":
@@ -234,70 +291,13 @@ if __name__ == "__main__":
 
     # build model
     regularization_fns, regularization_coeffs = create_regularization_fns()
-
-    # neural net that parameterizes the velocity field
-    if args.autoencode:
-
-        def build_cnf():
-            autoencoder_diffeq = layers.AutoencoderDiffEqNet(
-                hidden_dims=hidden_dims,
-                input_shape=data_shape,
-                strides=strides,
-                conv=args.conv,
-                layer_type=args.layer_type,
-                nonlinearity=args.nonlinearity,
-            )
-            odefunc = layers.AutoencoderODEfunc(
-                autoencoder_diffeq=autoencoder_diffeq,
-                divergence_fn=args.divergence_fn,
-                residual=args.residual,
-                rademacher=args.rademacher,
-            )
-            cnf = layers.CNF(
-                odefunc=odefunc,
-                T=args.time_length,
-                regularization_fns=regularization_fns,
-                solver=args.solver,
-            )
-            return cnf
-    else:
-
-        def build_cnf():
-            diffeq = layers.ODEnet(
-                hidden_dims=hidden_dims,
-                input_shape=data_shape,
-                strides=strides,
-                conv=args.conv,
-                layer_type=args.layer_type,
-                nonlinearity=args.nonlinearity,
-            )
-            odefunc = layers.ODEfunc(
-                diffeq=diffeq,
-                divergence_fn=args.divergence_fn,
-                residual=args.residual,
-                rademacher=args.rademacher,
-            )
-            cnf = layers.CNF(
-                odefunc=odefunc,
-                T=args.time_length,
-                regularization_fns=regularization_fns,
-                solver=args.solver,
-            )
-            return cnf
-
-    chain = [layers.LogitTransform(alpha=args.alpha), build_cnf()]
-    if args.batch_norm:
-        chain.append(layers.MovingBatchNorm2d(data_shape[0]))
-    model = layers.SequentialFlow(chain)
-
-    if args.spectral_norm:
-        add_spectral_norm(model)
+    model = create_model(args)
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
 
     # optimizer
-    optimizer = optim.Adam(model.parameters(), lr=args.lr_max, weight_decay=args.weight_decay)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # restore parameters
     if args.resume is not None:
@@ -314,7 +314,7 @@ if __name__ == "__main__":
     model.to(device)
 
     # For visualization.
-    fixed_z = cvt(torch.randn(100, *data_shape))
+    fixed_z = cvt(torch.randn(100, np.prod(data_shape)))
 
     time_meter = utils.RunningAverageMeter(0.97)
     loss_meter = utils.RunningAverageMeter(0.97)
@@ -367,10 +367,13 @@ if __name__ == "__main__":
                 losses = []
                 logit_losses = []
                 for (x, y) in test_loader:
+                    if not args.conv:
+                        x = x.view(x.shape[0], -1)
                     x = cvt(x)
                     loss, logit_loss, _ = compute_bits_per_dim(x, model)
                     losses.append(loss)
                     logit_losses.append(logit_loss.item())
+
                 loss = np.mean(losses)
                 logit_loss = np.mean(logit_losses)
                 logger.info(
