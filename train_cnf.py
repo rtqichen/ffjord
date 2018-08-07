@@ -31,6 +31,7 @@ parser.add_argument(
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
 parser.add_argument('--solver', type=str, default='dopri5', choices=["dopri5", "bdf", "rk4", "midpoint"])
+parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
 
 parser.add_argument("--imagesize", type=int, default=None)
 parser.add_argument("--alpha", type=float, default=1e-6)
@@ -227,10 +228,25 @@ def add_spectral_norm(model):
     find_cnf(model)
 
 
+def set_cnf_options(model):
+    def _set(module):
+        if isinstance(module, layers.CNF):
+            module.rademacher = args.rademacher
+            module.solver = args.solver
+            if args.step_size is not None:
+                module.solver_options['step_size'] = args.step_size
+
+    model.apply(_set)
+
+
 def create_model(args):
     if args.multiscale:
-        model = odenvp.ODENVP((args.batch_size, *data_shape), n_blocks=args.num_blocks, intermediate_dims=hidden_dims,
-                              alpha=args.alpha)
+        model = odenvp.ODENVP(
+            (args.batch_size, *data_shape),
+            n_blocks=args.num_blocks,
+            intermediate_dims=hidden_dims,
+            alpha=args.alpha,
+        )
     else:
         if args.autoencode:
 
@@ -306,6 +322,8 @@ if __name__ == "__main__":
 
     if args.spectral_norm:
         add_spectral_norm(model)
+
+    set_cnf_options(model)
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))

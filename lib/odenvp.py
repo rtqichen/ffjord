@@ -24,8 +24,6 @@ class ODENVP(nn.Module):
         intermediate_dims=(32,),
         squash_input=True,
         alpha=0.05,
-        solver='dopri5',
-        rademacher=False,
     ):
         super(ODENVP, self).__init__()
         self.n_scale = min(n_scale, self._calc_n_scale(input_size))
@@ -33,8 +31,6 @@ class ODENVP(nn.Module):
         self.intermediate_dims = intermediate_dims
         self.squash_input = squash_input
         self.alpha = alpha
-        self.solver = solver
-        self.rademacher = rademacher
 
         if not self.n_scale > 0:
             raise ValueError('Could not compute number of scales for input of' 'size (%d,%d,%d,%d)' % input_size)
@@ -55,8 +51,6 @@ class ODENVP(nn.Module):
                     init_layer=(layers.LogitTransform(self.alpha) if self.alpha > 0 else layers.ZeroMeanTransform())
                     if self.squash_input and i == 0 else None,
                     n_blocks=self.n_blocks,
-                    solver=self.solver,
-                    rademacher=self.rademacher
                 )
             )
             c, h, w = c * 2, h // 2, w // 2
@@ -137,7 +131,12 @@ class ODENVP(nn.Module):
 
 class StackedCNFLayers(layers.SequentialFlow):
     def __init__(
-        self, initial_size, idims=(32,), squeeze=True, init_layer=None, n_blocks=1, solver='dopri5', rademacher=False
+        self,
+        initial_size,
+        idims=(32,),
+        squeeze=True,
+        init_layer=None,
+        n_blocks=1,
     ):
         strides = tuple([1] + [1 for _ in idims])
         chain = []
@@ -146,16 +145,16 @@ class StackedCNFLayers(layers.SequentialFlow):
 
         def _make_odefunc(size):
             net = ODEnet(idims, size, strides, True, layer_type="concat")
-            f = layers.ODEfunc(net, rademacher=rademacher)
+            f = layers.ODEfunc(net)
             return f
 
         if squeeze:
             c, h, w = initial_size
             after_squeeze_size = c * 4, h // 2, w // 2
-            pre = [layers.CNF(_make_odefunc(initial_size), solver=solver, T=1.) for _ in range(n_blocks)]
-            post = [layers.CNF(_make_odefunc(after_squeeze_size), solver=solver, T=1.) for _ in range(n_blocks)]
+            pre = [layers.CNF(_make_odefunc(initial_size), T=1.) for _ in range(n_blocks)]
+            post = [layers.CNF(_make_odefunc(after_squeeze_size), T=1.) for _ in range(n_blocks)]
             chain += pre + [layers.SqueezeLayer(2)] + post
         else:
-            chain += [layers.CNF(_make_odefunc(initial_size), solver=solver, T=1.) for _ in range(n_blocks)]
+            chain += [layers.CNF(_make_odefunc(initial_size), T=1.) for _ in range(n_blocks)]
 
         super(StackedCNFLayers, self).__init__(chain)

@@ -27,6 +27,7 @@ class CNF(nn.Module):
         self.nreg = nreg
         self.regularization_states = None
         self.solver = solver
+        self.solver_options = {}
 
     def forward(self, z, logpz=None, integration_times=None, reverse=False, atol=1e-6, rtol=1e-5):
 
@@ -47,7 +48,8 @@ class CNF(nn.Module):
         reg_states = tuple(torch.zeros(1).to(z) for _ in range(self.nreg))
 
         state_t = odeint(
-            self.odefunc, (z, _logpz) + reg_states, integration_times.to(z), atol=atol, rtol=rtol, method=self.solver
+            self.odefunc, (z, _logpz) + reg_states,
+            integration_times.to(z), atol=atol, rtol=rtol, method=self.solver, options=self.solver_options
         )
 
         if len(integration_times) == 2:
