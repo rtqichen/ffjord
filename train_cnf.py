@@ -248,8 +248,7 @@ def create_model(args):
             n_blocks=args.num_blocks,
             intermediate_dims=hidden_dims,
             alpha=args.alpha,
-            time_length=args.time_length,
-            rademacher=args.rademacher
+            time_length=args.time_length
         )
     else:
         if args.autoencode:
