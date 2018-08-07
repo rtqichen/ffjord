@@ -36,7 +36,11 @@ class ODEnet(nn.Module):
     """
     Helper class to make neural nets for use in continuous normalizing flows
     """
-    def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus", use_spectral_norm=False):
+
+    def __init__(
+        self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus",
+        use_spectral_norm=False
+    ):
         super(ODEnet, self).__init__()
         assert layer_type in ("ignore", "hyper", "concat", "concatcoord", "blend")
         assert nonlinearity in ("tanh", "relu", "softplus", "elu")
@@ -105,6 +109,7 @@ class AutoencoderDiffEqNet(nn.Module):
     """
     Helper class to make neural nets for use in continuous normalizing flows
     """
+
     def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus"):
         super(AutoencoderDiffEqNet, self).__init__()
         assert layer_type in ("ignore", "hyper", "concat", "concatcoord", "blend")
@@ -191,9 +196,11 @@ class ODEfunc(nn.Module):
         elif divergence_fn == "approximate":
             self.divergence_fn = divergence_approx
 
+        self.register_buffer("_num_evals", torch.tensor(0.))
+
     def before_odeint(self, e=None):
         self._e = e
-        self._num_evals = 0
+        self._num_evals.fill_(0)
 
     def forward(self, t, y_and_logpy):
         y, _ = y_and_logpy  # remove logpy

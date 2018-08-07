@@ -66,7 +66,7 @@ class CNF(nn.Module):
         return reg_states
 
     def num_evals(self):
-        return self.odefunc._num_evals
+        return self.odefunc._num_evals.item()
 
 
 def _flip(x, dim):

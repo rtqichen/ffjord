@@ -58,11 +58,9 @@ parser.add_argument("--resume", type=str, default=None)
 parser.add_argument("--save", type=str, default="experiments/cnf")
 parser.add_argument("--val_freq", type=int, default=1)
 parser.add_argument("--log_freq", type=int, default=10)
-parser.add_argument("--gpu", type=int, default=0)
 
 #NVP params
 parser.add_argument("--num_blocks", type=int, default=1)
-
 
 args = parser.parse_args()
 
@@ -140,7 +138,7 @@ def get_dataset(args):
         )
     data_shape = (im_dim, im_size, im_size)
     if not args.conv:
-        data_shape = (im_dim * im_size * im_size, )
+        data_shape = (im_dim * im_size * im_size,)
 
     train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
@@ -164,20 +162,21 @@ def compute_bits_per_dim(x, model, regularization_coeffs=None):
     else:
         regularization = torch.tensor(0.).to(bits_per_dim)
 
-    return bits_per_dim, torch.tensor(0.0), regularization
+    return bits_per_dim, regularization
 
 
 def count_nfe(model):
-    num_evals = 0
-    if isinstance(model, layers.SequentialFlow):
-        for layer in model.chain:
-            if isinstance(layer, layers.CNF):
-                num_evals += layer.num_evals()
-        return num_evals
-    elif isinstance(model, odenvp.ODENVP):
-        for tform in model.transforms:
-            num_evals += count_nfe(tform)
-        return num_evals
+    class AccNumEvals(object):
+        def __init__(self):
+            self.num_evals = 0
+
+        def __call__(self, module):
+            if isinstance(module, layers.CNF):
+                self.num_evals += module.num_evals()
+
+    accumulator = AccNumEvals()
+    model.apply(accumulator)
+    return accumulator.num_evals
 
 
 def count_parameters(model):
@@ -211,16 +210,11 @@ def get_regularization(model, regularization_coeffs):
 
 def create_model(args):
     if args.multiscale:
-        model = odenvp.ODENVP(
-            (args.batch_size, *data_shape),
-            n_blocks=args.num_blocks,
-            intermediate_dims=hidden_dims,
-            alpha=args.alpha,
-            spectral_norm=args.spectral_norm
-        )
+        model = odenvp.ODENVP((args.batch_size, *data_shape), n_blocks=args.num_blocks, intermediate_dims=hidden_dims,
+                              alpha=args.alpha, spectral_norm=args.spectral_norm)
     else:
-        # neural net that parameterizes the velocity field
         if args.autoencode:
+
             def build_cnf():
                 autoencoder_diffeq = layers.AutoencoderDiffEqNet(
                     hidden_dims=hidden_dims,
@@ -244,6 +238,7 @@ def create_model(args):
                 )
                 return cnf
         else:
+
             def build_cnf():
                 diffeq = layers.ODEnet(
                     hidden_dims=hidden_dims,
@@ -277,8 +272,8 @@ def create_model(args):
 if __name__ == "__main__":
 
     # get deivce
-    device = torch.device("cuda:" + str(args.gpu) if torch.cuda.is_available() else "cpu")
-    cvt = lambda x: x.type(torch.float32).to(device)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    cvt = lambda x: x.type(torch.float32)
 
     # load dataset
     train_loader, test_loader, data_shape = get_dataset(args)
@@ -308,14 +303,13 @@ if __name__ == "__main__":
                     if torch.is_tensor(v):
                         state[k] = cvt(v)
 
-    model.to(device)
+    model = torch.nn.DataParallel(model).cuda()
 
     # For visualization.
-    fixed_z = cvt(torch.randn(100, np.prod(data_shape)))
+    fixed_z = cvt(torch.randn(100, *data_shape))
 
     time_meter = utils.RunningAverageMeter(0.97)
     loss_meter = utils.RunningAverageMeter(0.97)
-    logp_logit_meter = utils.RunningAverageMeter(0.97)
     steps_meter = utils.RunningAverageMeter(0.97)
     reg_meter = utils.RunningAverageMeter(0.97)
 
@@ -334,23 +328,22 @@ if __name__ == "__main__":
             x = cvt(x)
 
             # compute loss
-            bits_per_dim, logit_loss, regularization = compute_bits_per_dim(x, model, regularization_coeffs)
+            bits_per_dim, regularization = compute_bits_per_dim(x, model, regularization_coeffs)
             (bits_per_dim + regularization).backward()
 
             optimizer.step()
 
             time_meter.update(time.time() - start)
             loss_meter.update(bits_per_dim.item())
-            logp_logit_meter.update(logit_loss.item())
             steps_meter.update(count_nfe(model))
             reg_meter.update(regularization.item())
 
             if itr % args.log_freq == 0:
                 logger.info(
                     "Iter {:04d} | Time {:.4f}({:.4f}) | Bit/dim {:.4f}({:.4f}) | "
-                    "Logit LogP {:.4f}({:.4f}) | Steps {:.0f}({:.2f}) | Reg {:.4f}({:.4f})".format(
-                        itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, logp_logit_meter.val,
-                        logp_logit_meter.avg, steps_meter.val, steps_meter.avg, reg_meter.val, reg_meter.avg
+                    "Steps {:.0f}({:.2f}) | Reg {:.4f}({:.4f})".format(
+                        itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, steps_meter.val,
+                        steps_meter.avg, reg_meter.val, reg_meter.avg
                     )
                 )
 
@@ -362,27 +355,21 @@ if __name__ == "__main__":
                 start = time.time()
                 logger.info("validating...")
                 losses = []
-                logit_losses = []
                 for (x, y) in test_loader:
                     if not args.conv:
                         x = x.view(x.shape[0], -1)
                     x = cvt(x)
-                    loss, logit_loss, _ = compute_bits_per_dim(x, model)
+                    loss, _ = compute_bits_per_dim(x, model)
                     losses.append(loss)
-                    logit_losses.append(logit_loss.item())
 
                 loss = np.mean(losses)
-                logit_loss = np.mean(logit_losses)
-                logger.info(
-                    "Epoch {:04d} | Time {:.4f}, Bit/dim {:.4f}, Logit LogP {:.4f}".
-                    format(epoch, time.time() - start, loss, logit_loss)
-                )
+                logger.info("Epoch {:04d} | Time {:.4f}, Bit/dim {:.4f}".format(epoch, time.time() - start, loss))
                 if loss < best_loss:
                     best_loss = loss
                     utils.makedirs(args.save)
                     torch.save({
                         "args": args,
-                        "state_dict": model.state_dict(),
+                        "state_dict": model.module[0].state_dict(),
                         "optim_state_dict": optimizer.state_dict(),
                     }, os.path.join(args.save, "checkpt.pth"))
 

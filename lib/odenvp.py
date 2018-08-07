@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import lib.layers as layers
-import lib.layers.diffeq_layers as diffeq_layers
 from lib.layers.odefunc import ODEnet
 import numpy as np
 
@@ -123,11 +122,12 @@ class ODENVP(nn.Module):
         return out if logpx is None else (out, _logpx)
 
     def _generate(self, z, logpz=None):
+        z = z.view(z.shape[0], -1)
         zs = []
         i = 0
         for dims in self.dims:
             s = np.prod(dims)
-            zs.append(z[:, i: i + s])
+            zs.append(z[:, i:i + s])
             i += s
         zs = [_z.view(_z.size()[0], *zsize) for _z, zsize in zip(zs, self.dims)]
         _logpz = torch.zeros(zs[0].shape[0], 1).to(zs[0]) if logpz is None else logpz
@@ -140,15 +140,8 @@ class ODENVP(nn.Module):
 
 class StackedCNFLayers(layers.SequentialFlow):
     def __init__(
-        self,
-        initial_size,
-        idims=(32,),
-        squeeze=True,
-        init_layer=None,
-        n_blocks=1,
-        solver='dopri5',
-        spectral_norm=False,
-        rademacher=False
+        self, initial_size, idims=(32,), squeeze=True, init_layer=None, n_blocks=1, solver='dopri5',
+        spectral_norm=False, rademacher=False
     ):
         strides = tuple([1] + [1 for _ in idims])
         chain = []
@@ -173,11 +166,10 @@ class StackedCNFLayers(layers.SequentialFlow):
 
 
 if __name__ == "__main__":
-    f = ODENVP((32, 1, 28, 28), )
+    f = ODENVP((32, 1, 28, 28),)
     z = torch.randn(32, 1, 28, 28)
     z = torch.clamp(z, 0, 1)
     print(f)
     out = f(z)
-    1/0
+    1 / 0
     print(f)
-

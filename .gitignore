@@ -37,3 +37,4 @@ summary/
 plot/
 experiments/
 png/
+*.pdf
