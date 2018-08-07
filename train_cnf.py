@@ -231,10 +231,12 @@ def add_spectral_norm(model):
 def set_cnf_options(model):
     def _set(module):
         if isinstance(module, layers.CNF):
-            module.rademacher = args.rademacher
             module.solver = args.solver
             if args.step_size is not None:
                 module.solver_options['step_size'] = args.step_size
+        if isinstance(module, layers.ODEfunc):
+            module.rademacher = args.rademacher
+            module.residual = args.residual
 
     model.apply(_set)
 
