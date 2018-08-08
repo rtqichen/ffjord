@@ -31,11 +31,12 @@ parser.add_argument(
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
 parser.add_argument('--solver', type=str, default='dopri5', choices=["dopri5", "bdf", "rk4", "midpoint"])
+parser.add_argument('--test_solver', type=str, default='dopri5', choices=["dopri5", "bdf", "rk4", "midpoint", None])
 parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
 
 parser.add_argument("--imagesize", type=int, default=None)
 parser.add_argument("--alpha", type=float, default=1e-6)
-parser.add_argument("--time_length", type=float, default=None)
+parser.add_argument("--time_length", type=float, default=1.0)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
 parser.add_argument("--batch_size", type=int, default=200)
@@ -54,6 +55,8 @@ parser.add_argument('--multiscale', type=eval, default=False, choices=[True, Fal
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
 parser.add_argument("--dl2_coeff", type=float, default=0, help="Directional L2 on dynamics.")
+parser.add_argument("--max_grad_norm", type=float, default=1e10,
+                    help="Max norm of graidents (default is just stupidly high to avoid any clipping")
 
 parser.add_argument("--begin_epoch", type=int, default=1)
 parser.add_argument("--resume", type=str, default=None)
@@ -232,6 +235,10 @@ def set_cnf_options(model):
     def _set(module):
         if isinstance(module, layers.CNF):
             module.solver = args.solver
+            if args.solver is None:
+                module.test_solver = args.solver
+            else:
+                module.test_solver = args.test_solver
             if args.step_size is not None:
                 module.solver_options['step_size'] = args.step_size
         if isinstance(module, layers.ODEfunc):
@@ -300,7 +307,8 @@ def create_model(args):
                 )
                 return cnf
 
-        chain = [layers.LogitTransform(alpha=args.alpha)] + [build_cnf() for _ in range(args.num_blocks)]
+        chain = [layers.LogitTransform(alpha=args.alpha)] if args.alpha > 0 else [layers.ZeroMeanTransform()]
+        chain = chain + [build_cnf() for _ in range(args.num_blocks)]
         if args.batch_norm:
             chain.append(layers.MovingBatchNorm2d(data_shape[0]))
         model = layers.SequentialFlow(chain)
@@ -356,10 +364,12 @@ if __name__ == "__main__":
     loss_meter = utils.RunningAverageMeter(0.97)
     steps_meter = utils.RunningAverageMeter(0.97)
     reg_meter = utils.RunningAverageMeter(0.97)
+    grad_meter = utils.RunningAverageMeter(0.97)
 
     best_loss = float("inf")
     itr = (args.begin_epoch - 1) * len(train_loader)
     for epoch in range(args.begin_epoch, args.num_epochs + 1):
+        model.train()
         for _, (x, y) in enumerate(train_loader):
             start = time.time()
             update_lr(optimizer, itr)
@@ -374,6 +384,7 @@ if __name__ == "__main__":
             # compute loss
             bits_per_dim, regularization = compute_bits_per_dim(x, model, regularization_coeffs)
             (bits_per_dim + regularization).backward()
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
             optimizer.step()
 
@@ -381,19 +392,21 @@ if __name__ == "__main__":
             loss_meter.update(bits_per_dim.item())
             steps_meter.update(count_nfe(model))
             reg_meter.update(regularization.item())
+            grad_meter.update(grad_norm)
 
             if itr % args.log_freq == 0:
                 logger.info(
                     "Iter {:04d} | Time {:.4f}({:.4f}) | Bit/dim {:.4f}({:.4f}) | "
-                    "Steps {:.0f}({:.2f}) | Reg {:.4f}({:.4f})".format(
+                    "Steps {:.0f}({:.2f}) | Reg {:.4f}({:.4f}) | Grad Norm {:.4f}({:.4f})".format(
                         itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, steps_meter.val,
-                        steps_meter.avg, reg_meter.val, reg_meter.avg
+                        steps_meter.avg, reg_meter.val, reg_meter.avg, grad_meter.val, grad_meter.avg
                     )
                 )
 
             itr += 1
 
         # compute test loss
+        model.eval()
         if epoch % args.val_freq == 0:
             with torch.no_grad():
                 start = time.time()
@@ -413,7 +426,7 @@ if __name__ == "__main__":
                     utils.makedirs(args.save)
                     torch.save({
                         "args": args,
-                        "state_dict": model.module[0].state_dict(),
+                        "state_dict": model.state_dict(),
                         "optim_state_dict": optimizer.state_dict(),
                     }, os.path.join(args.save, "checkpt.pth"))
 

@@ -46,10 +46,10 @@ class CNF(nn.Module):
 
         # Add regularization states.
         reg_states = tuple(torch.zeros(1).to(z) for _ in range(self.nreg))
-
+        method = self.solver if self.training else self.test_solver
         state_t = odeint(
             self.odefunc, (z, _logpz) + reg_states,
-            integration_times.to(z), atol=atol, rtol=rtol, method=self.solver, options=self.solver_options
+            integration_times.to(z), atol=atol, rtol=rtol, method=method, options=self.solver_options
         )
 
         if len(integration_times) == 2:
