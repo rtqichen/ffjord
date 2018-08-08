@@ -426,7 +426,7 @@ if __name__ == "__main__":
                     utils.makedirs(args.save)
                     torch.save({
                         "args": args,
-                        "state_dict": model.state_dict(),
+                        "state_dict": model.module.state_dict() if torch.cuda.is_available() else model.state_dict(),
                         "optim_state_dict": optimizer.state_dict(),
                     }, os.path.join(args.save, "checkpt.pth"))
 
