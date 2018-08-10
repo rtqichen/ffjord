@@ -18,7 +18,7 @@ import lib.odenvp as odenvp
 
 # go fast boi!!
 torch.backends.cudnn.benchmark = True
-
+SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
 parser = argparse.ArgumentParser("Continuous Normalizing Flow")
 parser.add_argument("--data", choices=["mnist", "svhn", "cifar10"], type=str, default="mnist")
 parser.add_argument("--dims", type=str, default="8,32,32,8")
@@ -30,8 +30,8 @@ parser.add_argument(
 )
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
-parser.add_argument('--solver', type=str, default='dopri5', choices=["dopri5", "bdf", "rk4", "midpoint"])
-parser.add_argument('--test_solver', type=str, default='dopri5', choices=["dopri5", "bdf", "rk4", "midpoint", None])
+parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
+parser.add_argument('--test_solver', type=str, default='dopri5', choices=SOLVERS+[None])
 parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
 
 parser.add_argument("--imagesize", type=int, default=None)
