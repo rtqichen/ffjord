@@ -31,7 +31,7 @@ parser.add_argument(
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
 parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
-parser.add_argument('--test_solver', type=str, default='dopri5', choices=SOLVERS+[None])
+parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
 parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
 
 parser.add_argument("--imagesize", type=int, default=None)
@@ -55,8 +55,10 @@ parser.add_argument('--multiscale', type=eval, default=False, choices=[True, Fal
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
 parser.add_argument("--dl2_coeff", type=float, default=0, help="Directional L2 on dynamics.")
-parser.add_argument("--max_grad_norm", type=float, default=1e10,
-                    help="Max norm of graidents (default is just stupidly high to avoid any clipping")
+parser.add_argument(
+    "--max_grad_norm", type=float, default=1e10,
+    help="Max norm of graidents (default is just stupidly high to avoid any clipping"
+)
 
 parser.add_argument("--begin_epoch", type=int, default=1)
 parser.add_argument("--resume", type=str, default=None)
@@ -235,7 +237,7 @@ def set_cnf_options(model):
     def _set(module):
         if isinstance(module, layers.CNF):
             module.solver = args.solver
-            if args.solver is None:
+            if args.test_solver is None:
                 module.test_solver = args.solver
             else:
                 module.test_solver = args.test_solver
@@ -255,7 +257,7 @@ def create_model(args):
             n_blocks=args.num_blocks,
             intermediate_dims=hidden_dims,
             alpha=args.alpha,
-            time_length=args.time_length
+            time_length=args.time_length,
         )
     else:
         if args.autoencode:
