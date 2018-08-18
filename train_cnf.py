@@ -9,7 +9,7 @@ import torch.optim as optim
 import torchvision.datasets as dset
 import torchvision.transforms as tforms
 from torchvision.utils import save_image
-from torch.nn.utils.spectral_norm import spectral_norm
+import lib.spectral_norm as spectral_norm
 
 import lib.layers as layers
 import lib.layers.wrappers.cnf_regularization as reg_lib
@@ -221,7 +221,7 @@ def add_spectral_norm(model):
     def apply_spectral_norm(module):
         if 'weight' in module._parameters:
             logger.info("Adding spectral norm to {}".format(module))
-            spectral_norm(module, 'weight')
+            spectral_norm.inplace_spectral_norm(module, 'weight')
 
     def find_cnf(module):
         if isinstance(module, layers.CNF):
@@ -231,6 +231,14 @@ def add_spectral_norm(model):
                 find_cnf(child)
 
     find_cnf(model)
+
+
+def spectral_norm_power_iteration(model, n_power_iterations=1):
+    def recursive_power_iteration(module):
+        if hasattr(module, spectral_norm.POWER_ITERATION_FN):
+            getattr(module, spectral_norm.POWER_ITERATION_FN)(n_power_iterations)
+
+    model.apply(recursive_power_iteration)
 
 
 def set_cnf_options(model):
@@ -333,9 +341,7 @@ if __name__ == "__main__":
     regularization_fns, regularization_coeffs = create_regularization_fns()
     model = create_model(args)
 
-    if args.spectral_norm:
-        add_spectral_norm(model)
-
+    if args.spectral_norm: add_spectral_norm(model)
     set_cnf_options(model)
 
     logger.info(model)
@@ -372,9 +378,12 @@ if __name__ == "__main__":
     itr = (args.begin_epoch - 1) * len(train_loader)
     for epoch in range(args.begin_epoch, args.num_epochs + 1):
         model.train()
+        if args.spectral_norm: spectral_norm_power_iteration(model, 100)
         for _, (x, y) in enumerate(train_loader):
             start = time.time()
             update_lr(optimizer, itr)
+            if args.spectral_norm: spectral_norm_power_iteration(model)
+
             optimizer.zero_grad()
 
             if not args.conv:
