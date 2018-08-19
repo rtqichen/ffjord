@@ -45,6 +45,10 @@ parser.add_argument("--time_length", type=float, default=None)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
 parser.add_argument("--batch_size", type=int, default=200)
+parser.add_argument(
+    "--batch_size_schedule", type=str, default="", help="Increases the batchsize at every given epoch, dash separated."
+)
+parser.add_argument("--test_batch_size", type=int, default=2000)
 parser.add_argument("--lr", type=float, default=1e-3)
 parser.add_argument("--warmup_iters", type=float, default=1000)
 parser.add_argument("--weight_decay", type=float, default=0.0)
@@ -110,6 +114,20 @@ def update_lr(optimizer, itr):
         param_group["lr"] = lr
 
 
+def get_train_loader(train_set, epoch):
+    if args.batch_size_schedule != "":
+        epochs = [0] + list(map(int, args.batch_size_schedule.split("-")))
+        n_passed = sum(np.array(epochs) <= epoch)
+        current_batch_size = int(args.batch_size * n_passed)
+    else:
+        current_batch_size = args.batch_size
+    train_loader = torch.utils.data.DataLoader(
+        dataset=train_set, batch_size=current_batch_size, shuffle=True, drop_last=True, pin_memory=True
+    )
+    logger.info("===> Using batch size {}. Total {} iterations/epoch.".format(current_batch_size, len(train_loader)))
+    return train_loader
+
+
 def get_dataset(args):
     trans = lambda im_size: tforms.Compose([tforms.Resize(im_size), tforms.ToTensor(), add_noise])
 
@@ -152,15 +170,19 @@ def get_dataset(args):
     if not args.conv:
         data_shape = (im_dim * im_size * im_size,)
 
-    train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
-    logger.info("==>>> total training batch number: {}".format(len(train_loader)))
-    logger.info("==>>> total testing batch number: {}".format(len(test_loader)))
-    return train_loader, test_loader, data_shape
+    test_loader = torch.utils.data.DataLoader(
+        dataset=test_set, batch_size=args.test_batch_size, shuffle=False, drop_last=True
+    )
+    return train_set, test_loader, data_shape
 
 
 def compute_bits_per_dim(x, model, regularization_coeffs=None):
     zero = torch.zeros(x.shape[0], 1).to(x)
+
+    # Don't use data parallelize if batch size is small.
+    # if x.shape[0] < 200:
+    #     model = model.module
+
     z, delta_logp = model(x, zero)  # run model forward
 
     logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)  # logp(z)
@@ -339,10 +361,10 @@ if __name__ == "__main__":
 
     # get deivce
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    cvt = lambda x: x.type(torch.float32)
+    cvt = lambda x: x.type(torch.float32).to(device, non_blocking=True)
 
     # load dataset
-    train_loader, test_loader, data_shape = get_dataset(args)
+    train_set, test_loader, data_shape = get_dataset(args)
 
     hidden_dims = tuple(map(int, args.dims.split(",")))
     strides = tuple(map(int, args.strides.split(",")))
@@ -385,9 +407,10 @@ if __name__ == "__main__":
     grad_meter = utils.RunningAverageMeter(0.97)
 
     best_loss = float("inf")
-    itr = (args.begin_epoch - 1) * len(train_loader)
+    itr = 0
     for epoch in range(args.begin_epoch, args.num_epochs + 1):
         model.train()
+        train_loader = get_train_loader(train_set, epoch)
         if args.spectral_norm: spectral_norm_power_iteration(model, 100)
         for _, (x, y) in enumerate(train_loader):
             start = time.time()
