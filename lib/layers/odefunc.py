@@ -48,6 +48,7 @@ class ODEnet(nn.Module):
                 "hyper": diffeq_layers.HyperConv2d,
                 "squash": diffeq_layers.SquashConv2d,
                 "concat": diffeq_layers.ConcatConv2d,
+                "concatsquash": diffeq_layers.ConcatSquashConv2d,
                 "blend": diffeq_layers.BlendConv2d,
                 "concatcoord": diffeq_layers.ConcatCoordConv2d,
             }[layer_type]
@@ -58,6 +59,7 @@ class ODEnet(nn.Module):
                 "hyper": diffeq_layers.HyperLinear,
                 "squash": diffeq_layers.SquashLinear,
                 "concat": diffeq_layers.ConcatLinear,
+                "concatsquash": diffeq_layers.ConcatSquashLinear,
                 "blend": diffeq_layers.BlendLinear,
                 "concatcoord": diffeq_layers.ConcatLinear,
             }[layer_type]

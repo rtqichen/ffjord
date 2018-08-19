@@ -27,7 +27,8 @@ parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked
 
 parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
 parser.add_argument(
-    "--layer_type", type=str, default="ignore", choices=["ignore", "concat", "concatcoord", "hyper", "blend"]
+    "--layer_type", type=str, default="ignore",
+    choices=["ignore", "concat", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
 )
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
@@ -244,7 +245,8 @@ def add_spectral_norm(model):
     """Applies spectral norm to all modules within the scope of a CNF."""
 
     def apply_spectral_norm(module):
-        if 'weight' in module._parameters:
+        # Don't apply spectral norm to hypernets.
+        if 'weight' in module._parameters and not (isinstance(module, torch.nn.Linear) and module.in_features == 1):
             logger.info("Adding spectral norm to {}".format(module))
             spectral_norm.inplace_spectral_norm(module, 'weight')
 
