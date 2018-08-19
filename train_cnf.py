@@ -43,7 +43,8 @@ parser.add_argument('--test_rtol', type=float, default=None)
 
 parser.add_argument("--imagesize", type=int, default=None)
 parser.add_argument("--alpha", type=float, default=1e-6)
-parser.add_argument("--time_length", type=float, default=None)
+parser.add_argument('--time_length', type=float, default=1.0)
+parser.add_argument('--train_T', type=eval, default=True)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
 parser.add_argument("--batch_size", type=int, default=200)
@@ -300,7 +301,7 @@ def create_model(args, data_shape, regularization_fns):
             n_blocks=args.num_blocks,
             intermediate_dims=hidden_dims,
             alpha=args.alpha,
-            time_length=args.time_length,
+            cnf_kwargs={"T": args.time_length, "train_T": args.train_T},
         )
     else:
         if args.autoencode:
@@ -347,6 +348,7 @@ def create_model(args, data_shape, regularization_fns):
                 cnf = layers.CNF(
                     odefunc=odefunc,
                     T=args.time_length,
+                    train_T=args.train_T,
                     regularization_fns=regularization_fns,
                     solver=args.solver,
                 )

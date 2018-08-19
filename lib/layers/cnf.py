@@ -9,14 +9,13 @@ __all__ = ["CNF"]
 
 
 class CNF(nn.Module):
-    def __init__(self, odefunc, T=None, regularization_fns=None, solver='dopri5', atol=1e-5, rtol=1e-5):
+    def __init__(self, odefunc, T=1.0, train_T=False, regularization_fns=None, solver='dopri5', atol=1e-5, rtol=1e-5):
         super(CNF, self).__init__()
-        if T is None:
-            self.end_time_param = nn.Parameter(torch.tensor(1.0))
-            self.end_time = self.end_time_param**2
+        if train_T:
+            self.register_parameter("sqrt_end_time", nn.Parameter(torch.sqrt(torch.tensor(T))))
         else:
-            self.end_time = T
-        self.integration_times = torch.tensor([0.0, self.end_time])
+            self.register_buffer("sqrt_end_time", torch.sqrt(torch.tensor(T)))
+        self.integration_times = torch.tensor([0.0, self.sqrt_end_time * self.sqrt_end_time])
 
         nreg = 0
         if regularization_fns is not None:

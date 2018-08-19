@@ -24,7 +24,7 @@ class ODENVP(nn.Module):
         intermediate_dims=(32,),
         squash_input=True,
         alpha=0.05,
-        time_length=1.,
+        cnf_kwargs=None,
     ):
         super(ODENVP, self).__init__()
         self.n_scale = min(n_scale, self._calc_n_scale(input_size))
@@ -32,7 +32,7 @@ class ODENVP(nn.Module):
         self.intermediate_dims = intermediate_dims
         self.squash_input = squash_input
         self.alpha = alpha
-        self.time_length = time_length
+        self.cnf_kwargs = cnf_kwargs if cnf_kwargs else {}
 
         if not self.n_scale > 0:
             raise ValueError('Could not compute number of scales for input of' 'size (%d,%d,%d,%d)' % input_size)
@@ -53,7 +53,7 @@ class ODENVP(nn.Module):
                     init_layer=(layers.LogitTransform(self.alpha) if self.alpha > 0 else layers.ZeroMeanTransform())
                     if self.squash_input and i == 0 else None,
                     n_blocks=self.n_blocks,
-                    time_length=self.time_length
+                    cnf_kwargs=self.cnf_kwargs,
                 )
             )
             c, h, w = c * 2, h // 2, w // 2
@@ -140,7 +140,7 @@ class StackedCNFLayers(layers.SequentialFlow):
         squeeze=True,
         init_layer=None,
         n_blocks=1,
-        time_length=1.,
+        cnf_kwargs={},
     ):
         strides = tuple([1] + [1 for _ in idims])
         chain = []
@@ -155,10 +155,10 @@ class StackedCNFLayers(layers.SequentialFlow):
         if squeeze:
             c, h, w = initial_size
             after_squeeze_size = c * 4, h // 2, w // 2
-            pre = [layers.CNF(_make_odefunc(initial_size), T=time_length) for _ in range(n_blocks)]
-            post = [layers.CNF(_make_odefunc(after_squeeze_size), T=time_length) for _ in range(n_blocks)]
+            pre = [layers.CNF(_make_odefunc(initial_size), **cnf_kwargs) for _ in range(n_blocks)]
+            post = [layers.CNF(_make_odefunc(after_squeeze_size), **cnf_kwargs) for _ in range(n_blocks)]
             chain += pre + [layers.SqueezeLayer(2)] + post
         else:
-            chain += [layers.CNF(_make_odefunc(initial_size), T=time_length) for _ in range(n_blocks)]
+            chain += [layers.CNF(_make_odefunc(initial_size), **cnf_kwargs) for _ in range(n_blocks)]
 
         super(StackedCNFLayers, self).__init__(chain)
