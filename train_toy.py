@@ -19,15 +19,16 @@ from lib.visualize_flow import visualize_transform
 SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
 parser.add_argument(
-    '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons'], type=str, default='moons'
+    '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons'], type=str, default='pinwheel'
 )
 parser.add_argument(
-    "--layer_type", type=str, default="ignore",
+    "--layer_type", type=str, default="concatsquash",
     choices=["ignore", "concat", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
 )
 parser.add_argument('--dims', type=str, default='64,64,64')
 parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
-parser.add_argument('--time_length', type=float, default=None)
+parser.add_argument('--time_length', type=float, default=1.0)
+parser.add_argument('--train_T', type=eval, default=True)
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
 
@@ -163,6 +164,7 @@ def build_model(args):
         cnf = layers.CNF(
             odefunc=odefunc,
             T=args.time_length,
+            train_T=args.train_T,
             solver=args.solver,
         )
         return cnf
@@ -178,6 +180,22 @@ def build_model(args):
     model = layers.SequentialFlow(chain)
 
     return model
+
+
+def get_transforms(model):
+    def _sample(z, logpz=None):
+        if logpz is not None:
+            return model(z, logpz, reverse=True)
+        else:
+            return model(z, reverse=True)
+
+    def _density(x, logpx=None):
+        if logpx is not None:
+            return model(x, logpx, reverse=False)
+        else:
+            return model(x, reverse=False)
+
+    return _sample, _density
 
 
 def compute_loss(args, model, batch_size=None):
@@ -255,15 +273,12 @@ if __name__ == '__main__':
                 model.eval()
                 p_samples = toy_data.inf_train_gen(args.data, batch_size=3000)
 
-                def sample_model(z, logpz=None):
-                    if logpz is not None:
-                        return model(z, logpz, reverse=True)
-                    else:
-                        return model(z, reverse=True)
+                transform, inverse_transform = get_transforms(model)
 
                 plt.figure(figsize=(9, 3))
                 visualize_transform(
-                    p_samples, torch.randn, standard_normal_logprob, sample_model, samples=True, device=device
+                    p_samples, torch.randn, standard_normal_logprob, transform=transform,
+                    inverse_transform=inverse_transform, samples=True, device=device
                 )
                 fig_filename = os.path.join(args.save, 'figs', '{:04d}.jpg'.format(itr))
                 utils.makedirs(os.path.dirname(fig_filename))

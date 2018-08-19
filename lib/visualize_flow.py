@@ -8,13 +8,13 @@ LOW = -4
 HIGH = 4
 
 
-def plt_potential_func(potential, ax, low=LOW, high=HIGH, npts=200, title="$p(x)$"):
+def plt_potential_func(potential, ax, npts=200, title="$p(x)$"):
     """
     Args:
         potential: computes U(z_k) given z_k
     """
-    xside = np.linspace(low, high, npts)
-    yside = np.linspace(-4, 4, npts)
+    xside = np.linspace(LOW, HIGH, npts)
+    yside = np.linspace(LOW, HIGH, npts)
     xx, yy = np.meshgrid(xside, yside)
     z = np.hstack([xx.reshape(-1, 1), yy.reshape(-1, 1)])
 
@@ -29,12 +29,12 @@ def plt_potential_func(potential, ax, low=LOW, high=HIGH, npts=200, title="$p(x)
     ax.set_title(title)
 
 
-def plt_flow(prior_logdensity, transform, ax, low=LOW, high=HIGH, npts=200, title="$q(x)$", device="cpu"):
+def plt_flow(prior_logdensity, transform, ax, npts=400, title="$q(x)$", device="cpu"):
     """
     Args:
         transform: computes z_k and log(q_k) given z_0
     """
-    side = np.linspace(low, high, npts)
+    side = np.linspace(LOW, HIGH, npts)
     xx, yy = np.meshgrid(side, side)
     z = np.hstack([xx.reshape(-1, 1), yy.reshape(-1, 1)])
 
@@ -50,7 +50,32 @@ def plt_flow(prior_logdensity, transform, ax, low=LOW, high=HIGH, npts=200, titl
 
     plt.pcolormesh(xx, yy, qz)
     ax.set_xlim(LOW, HIGH)
-    ax.set_ylim(-4, 4)
+    ax.set_ylim(LOW, HIGH)
+    cmap = matplotlib.cm.get_cmap(None)
+    ax.set_axis_bgcolor(cmap(0.))
+    ax.invert_yaxis()
+    ax.get_xaxis().set_ticks([])
+    ax.get_yaxis().set_ticks([])
+    ax.set_title(title)
+
+
+def plt_flow_density(prior_logdensity, inverse_transform, ax, npts=200, title="$q(x)$", device="cpu"):
+    side = np.linspace(LOW, HIGH, npts)
+    xx, yy = np.meshgrid(side, side)
+    x = np.hstack([xx.reshape(-1, 1), yy.reshape(-1, 1)])
+
+    x = torch.from_numpy(x).type(torch.float32).to(device)
+    zeros = torch.zeros(x.shape[0], 1).to(x)
+    z, delta_logp = inverse_transform(x, zeros)
+
+    logpz = prior_logdensity(z).view(z.shape[0], -1).sum(1, keepdim=True)  # logp(z)
+    logpx = logpz - delta_logp
+
+    px = np.exp(logpx.cpu().numpy()).reshape(npts, npts)
+
+    plt.pcolormesh(xx, yy, px)
+    ax.set_xlim(LOW, HIGH)
+    ax.set_ylim(LOW, HIGH)
     cmap = matplotlib.cm.get_cmap(None)
     ax.set_axis_bgcolor(cmap(0.))
     ax.invert_yaxis()
@@ -62,7 +87,7 @@ def plt_flow(prior_logdensity, transform, ax, low=LOW, high=HIGH, npts=200, titl
 def plt_flow_samples(prior_sample, transform, ax, title="$x ~ q(x)$", device="cpu"):
     z = prior_sample(10000, 2).type(torch.float32).to(device)
     zk = transform(z).cpu().numpy()
-    ax.hist2d(zk[:, 0], zk[:, 1], range=[[LOW, HIGH], [-4, 4]], bins=200)
+    ax.hist2d(zk[:, 0], zk[:, 1], range=[[LOW, HIGH], [LOW, HIGH]], bins=200)
     ax.invert_yaxis()
     ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])
@@ -70,7 +95,7 @@ def plt_flow_samples(prior_sample, transform, ax, title="$x ~ q(x)$", device="cp
 
 
 def plt_samples(samples, ax, title="$x ~ p(x)$"):
-    ax.hist2d(samples[:, 0], samples[:, 1], range=[[LOW, HIGH], [-4, 4]], bins=200)
+    ax.hist2d(samples[:, 0], samples[:, 1], range=[[LOW, HIGH], [LOW, HIGH]], bins=200)
     ax.invert_yaxis()
     ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])
@@ -88,7 +113,9 @@ def visualize_samples(prior_sample, transform, device="cpu", num_samples=100, po
     return x
 
 
-def visualize_transform(potential_or_samples, prior_sample, prior_density, transform, samples=True, device="cpu"):
+def visualize_transform(
+    potential_or_samples, prior_sample, prior_density, transform, inverse_transform=None, samples=True, device="cpu"
+):
     """Produces visualization for the model density and samples from the model."""
     _t = time.time()
     plt.clf()
@@ -99,7 +126,10 @@ def visualize_transform(potential_or_samples, prior_sample, prior_density, trans
         plt_potential_func(potential_or_samples, ax)
 
     ax = plt.subplot(1, 3, 2, aspect="equal")
-    plt_flow(prior_density, transform, ax, device=device)
+    if inverse_transform is None:
+        plt_flow(prior_density, transform, ax, device=device)
+    else:
+        plt_flow_density(prior_density, inverse_transform, ax, device=device)
 
     ax = plt.subplot(1, 3, 3, aspect="equal")
     plt_flow_samples(prior_sample, transform, ax, device=device)
