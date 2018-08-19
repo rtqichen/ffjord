@@ -59,7 +59,7 @@ parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False
 parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
 parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
 parser.add_argument('--autoencode', type=eval, default=False, choices=[True, False])
-parser.add_argument('--rademacher', type=eval, default=False, choices=[True, False])
+parser.add_argument('--rademacher', type=eval, default=True, choices=[True, False])
 parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
 parser.add_argument('--multiscale', type=eval, default=False, choices=[True, False])
 

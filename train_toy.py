@@ -41,7 +41,7 @@ parser.add_argument('--test_atol', type=float, default=None)
 parser.add_argument('--test_rtol', type=float, default=None)
 
 parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
-parser.add_argument('--rademacher', type=eval, default=False, choices=[True, False])
+parser.add_argument('--rademacher', type=eval, default=True, choices=[True, False])
 parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
 
 parser.add_argument('--niters', type=int, default=10000)
