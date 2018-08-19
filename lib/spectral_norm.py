@@ -63,7 +63,7 @@ class SpectralNorm(object):
             self.compute_weight(module)
         if not module.training:
             r_g = getattr(module, self.name + '_orig').requires_grad
-            getattr(module, self.name).detach_().requires_grad_(r_g)
+            setattr(module, self.name, getattr(module, self.name).detach().requires_grad_(r_g))
 
     @staticmethod
     def apply(module, name, dim, eps):
