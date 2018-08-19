@@ -23,6 +23,7 @@ parser = argparse.ArgumentParser("Continuous Normalizing Flow")
 parser.add_argument("--data", choices=["mnist", "svhn", "cifar10"], type=str, default="mnist")
 parser.add_argument("--dims", type=str, default="8,32,32,8")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
+parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
 
 parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
 parser.add_argument(
@@ -74,9 +75,6 @@ parser.add_argument("--resume", type=str, default=None)
 parser.add_argument("--save", type=str, default="experiments/cnf")
 parser.add_argument("--val_freq", type=int, default=1)
 parser.add_argument("--log_freq", type=int, default=10)
-
-# ODE-NVP params
-parser.add_argument("--num_blocks", type=int, default=1)
 
 args = parser.parse_args()
 
