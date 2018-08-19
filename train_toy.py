@@ -22,7 +22,8 @@ parser.add_argument(
     '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons'], type=str, default='moons'
 )
 parser.add_argument(
-    "--layer_type", type=str, default="ignore", choices=["ignore", "concat", "squash", "concatcoord", "hyper", "blend"]
+    "--layer_type", type=str, default="ignore",
+    choices=["ignore", "concat", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
 )
 parser.add_argument('--dims', type=str, default='64,64,64')
 parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
@@ -193,6 +194,12 @@ def compute_loss(args, model, batch_size=None):
 if __name__ == '__main__':
 
     model = build_model(args).to(device)
+    if args.spectral_norm: add_spectral_norm(model)
+    set_cnf_options(model)
+
+    logger.info(model)
+    logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
+
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     time_meter = utils.RunningAverageMeter(0.97)
@@ -203,6 +210,7 @@ if __name__ == '__main__':
     model.train()
     for itr in range(1, args.niters + 1):
         optimizer.zero_grad()
+        if args.spectral_norm: spectral_norm_power_iteration(model, 1)
 
         loss = compute_loss(args, model)
         loss.backward()
