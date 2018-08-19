@@ -39,8 +39,6 @@ class ODEnet(nn.Module):
 
     def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus"):
         super(ODEnet, self).__init__()
-        assert layer_type in ("ignore", "hyper", "concat", "concatcoord", "blend")
-        assert nonlinearity in ("tanh", "relu", "softplus", "elu")
 
         self.nonlinearity = {"tanh": F.tanh, "relu": F.relu, "softplus": F.softplus, "elu": F.elu}[nonlinearity]
         if conv:
@@ -57,6 +55,7 @@ class ODEnet(nn.Module):
             base_layer = {
                 "ignore": diffeq_layers.IgnoreLinear,
                 "hyper": diffeq_layers.HyperLinear,
+                "squash": diffeq_layers.SquashLinear,
                 "concat": diffeq_layers.ConcatLinear,
                 "blend": diffeq_layers.BlendLinear,
                 "concatcoord": diffeq_layers.ConcatLinear,

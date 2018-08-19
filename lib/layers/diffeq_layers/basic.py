@@ -53,6 +53,16 @@ class ConcatLinear(nn.Module):
         return self._layer(ttx)
 
 
+class SquashLinear(nn.Module):
+    def __init__(self, dim_in, dim_out):
+        super(SquashLinear, self).__init__()
+        self._layer = nn.Linear(dim_in, dim_out)
+        self._hyper = nn.Linear(1, dim_out)
+
+    def forward(self, t, x):
+        return self._layer(x) * torch.sigmoid(self._hyper(t.view(1, 1)))
+
+
 class HyperConv2d(nn.Module):
     def __init__(self, dim_in, dim_out, ksize=3, stride=1, padding=0, dilation=1, groups=1, bias=True, transpose=False):
         super(HyperConv2d, self).__init__()
