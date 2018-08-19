@@ -409,11 +409,10 @@ if __name__ == "__main__":
     for epoch in range(args.begin_epoch, args.num_epochs + 1):
         model.train()
         train_loader = get_train_loader(train_set, epoch)
-        if args.spectral_norm: spectral_norm_power_iteration(model, 100)
         for _, (x, y) in enumerate(train_loader):
             start = time.time()
             update_lr(optimizer, itr)
-            if args.spectral_norm: spectral_norm_power_iteration(model)
+            if args.spectral_norm: spectral_norm_power_iteration(model, 10)
 
             optimizer.zero_grad()
 
