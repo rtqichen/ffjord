@@ -43,10 +43,11 @@ parser.add_argument('--test_rtol', type=float, default=None)
 parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
 parser.add_argument('--rademacher', type=eval, default=True, choices=[True, False])
 parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
+parser.add_argument('--batch_norm', type=eval, default=False, choices=[True, False])
 
 parser.add_argument('--niters', type=int, default=10000)
 parser.add_argument('--batch_size', type=int, default=200)
-parser.add_argument('--test_batch_size', type=int, default=200)
+parser.add_argument('--test_batch_size', type=int, default=1000)
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--weight_decay', type=float, default=0)
 
@@ -167,6 +168,13 @@ def build_model(args):
         return cnf
 
     chain = [build_cnf() for _ in range(args.num_blocks)]
+    if args.batch_norm:
+        bn_layers = [layers.MovingBatchNorm1d(2) for _ in range(args.num_blocks)]
+        bn_chain = []
+        for a, b in zip(chain, bn_layers):
+            bn_chain.append(a)
+            bn_chain.append(b)
+        chain = bn_chain
     model = layers.SequentialFlow(chain)
 
     return model
@@ -233,8 +241,8 @@ if __name__ == '__main__':
                 test_nfe = count_nfe(model)
                 logger.info('Iter {:04d} | Test Loss {:.6f} | NFE {:.0f}'.format(itr, test_loss, test_nfe))
 
-                if loss.item() < best_loss:
-                    best_loss = loss.item()
+                if test_loss.item() < best_loss:
+                    best_loss = test_loss.item()
                     utils.makedirs(args.save)
                     torch.save({
                         'args': args,
