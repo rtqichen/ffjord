@@ -2,12 +2,12 @@ import torch
 import torch.nn as nn
 from torch.nn import Parameter
 
-__all__ = ['MovingBatchNorm2d']
+__all__ = ['MovingBatchNorm1d', 'MovingBatchNorm2d']
 
 
-class MovingBatchNorm2d(nn.Module):
+class MovingBatchNormNd(nn.Module):
     def __init__(self, num_features, eps=1e-4, decay=0.1, bn_lag=0., affine=True):
-        super(MovingBatchNorm2d, self).__init__()
+        super(MovingBatchNormNd, self).__init__()
         self.num_features = num_features
         self.affine = affine
         self.eps = eps
@@ -23,6 +23,10 @@ class MovingBatchNorm2d(nn.Module):
         self.register_buffer('running_mean', torch.zeros(num_features))
         self.register_buffer('running_var', torch.ones(num_features))
         self.reset_parameters()
+
+    @property
+    def shape(self):
+        raise NotImplementedError
 
     def reset_parameters(self):
         self.running_mean.zero_()
@@ -61,14 +65,14 @@ class MovingBatchNorm2d(nn.Module):
             self.step += 1
 
         # perform normalization
-        used_mean = used_mean.view(1, c, 1, 1).expand_as(x)
-        used_var = used_var.view(1, c, 1, 1).expand_as(x)
+        used_mean = used_mean.view(*self.shape).expand_as(x)
+        used_var = used_var.view(*self.shape).expand_as(x)
 
         y = (x - used_mean) * torch.exp(-0.5 * torch.log(used_var + self.eps))
 
         if self.affine:
-            weight = self.weight.view(1, -1, 1, 1).expand_as(x)
-            bias = self.bias.view(1, -1, 1, 1).expand_as(x)
+            weight = self.weight.view(*self.shape).expand_as(x)
+            bias = self.bias.view(*self.shape).expand_as(x)
             y = y * torch.exp(weight) + bias
 
         if logpx is None:
@@ -81,12 +85,12 @@ class MovingBatchNorm2d(nn.Module):
         used_var = self.running_var
 
         if self.affine:
-            weight = self.weight.view(1, -1, 1, 1).expand_as(y)
-            bias = self.bias.view(1, -1, 1, 1).expand_as(y)
+            weight = self.weight.view(*self.shape).expand_as(y)
+            bias = self.bias.view(*self.shape).expand_as(y)
             y = (y - bias) * torch.exp(-weight)
 
-        used_mean = used_mean.view(1, -1, 1, 1).expand_as(y)
-        used_var = used_var.view(1, -1, 1, 1).expand_as(y)
+        used_mean = used_mean.view(*self.shape).expand_as(y)
+        used_var = used_var.view(*self.shape).expand_as(y)
         x = y * torch.exp(0.5 * torch.log(used_var + self.eps)) + used_mean
 
         if logpy is None:
@@ -95,10 +99,9 @@ class MovingBatchNorm2d(nn.Module):
             return x, logpy + self._logdetgrad(x, used_var).view(x.size(0), -1).sum(1, keepdim=True)
 
     def _logdetgrad(self, x, used_var):
-        n, c, h, w = x.size()
         logdetgrad = -0.5 * torch.log(used_var + self.eps)
         if self.affine:
-            weight = self.weight.view(1, c, 1, 1).expand(n, c, h, w)
+            weight = self.weight.view(*self.shape).expand(*x.size())
             logdetgrad += weight
         return logdetgrad
 
@@ -120,3 +123,15 @@ def stable_var(x, mean=None, dim=1):
     # change nan to zero
     var[var != var] = 0
     return var
+
+
+class MovingBatchNorm1d(MovingBatchNormNd):
+    @property
+    def shape(self):
+        return [1, -1]
+
+
+class MovingBatchNorm2d(MovingBatchNormNd):
+    @property
+    def shape(self):
+        return [1, -1, 1, 1]
