@@ -31,12 +31,17 @@ parser.add_argument(
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
 parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
-parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
+parser.add_argument('--atol', type=float, default=1e-5)
+parser.add_argument('--rtol', type=float, default=1e-5)
 parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
+
+parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
+parser.add_argument('--test_atol', type=float, default=None)
+parser.add_argument('--test_rtol', type=float, default=None)
 
 parser.add_argument("--imagesize", type=int, default=None)
 parser.add_argument("--alpha", type=float, default=1e-6)
-parser.add_argument("--time_length", type=float, default=1.0)
+parser.add_argument("--time_length", type=float, default=None)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
 parser.add_argument("--batch_size", type=int, default=200)
@@ -244,13 +249,18 @@ def spectral_norm_power_iteration(model, n_power_iterations=1):
 def set_cnf_options(model):
     def _set(module):
         if isinstance(module, layers.CNF):
+            # Set training settings
             module.solver = args.solver
-            if args.test_solver is None:
-                module.test_solver = args.solver
-            else:
-                module.test_solver = args.test_solver
+            module.atol = args.atol
+            module.rtol = args.rtol
             if args.step_size is not None:
                 module.solver_options['step_size'] = args.step_size
+
+            # Set the test settings
+            module.test_solver = args.test_solver if args.test_solver else args.solver
+            module.test_atol = args.test_atol if args.test_atol else args.atol
+            module.test_rtol = args.test_rtol if args.test_rtol else args.rtol
+
         if isinstance(module, layers.ODEfunc):
             module.rademacher = args.rademacher
             module.residual = args.residual

@@ -9,7 +9,7 @@ __all__ = ["CNF"]
 
 
 class CNF(nn.Module):
-    def __init__(self, odefunc, T=None, regularization_fns=None, solver='dopri5'):
+    def __init__(self, odefunc, T=None, regularization_fns=None, solver='dopri5', atol=1e-5, rtol=1e-5):
         super(CNF, self).__init__()
         if T is None:
             self.end_time_param = nn.Parameter(torch.tensor(1.0))
@@ -27,9 +27,14 @@ class CNF(nn.Module):
         self.nreg = nreg
         self.regularization_states = None
         self.solver = solver
+        self.atol = atol
+        self.rtol = rtol
+        self.test_solver = solver
+        self.test_atol = atol
+        self.test_rtol = rtol
         self.solver_options = {}
 
-    def forward(self, z, logpz=None, integration_times=None, reverse=False, atol=1e-6, rtol=1e-5):
+    def forward(self, z, logpz=None, integration_times=None, reverse=False):
 
         if logpz is None:
             _logpz = torch.zeros(z.shape[0], 1).to(z)
@@ -46,11 +51,26 @@ class CNF(nn.Module):
 
         # Add regularization states.
         reg_states = tuple(torch.zeros(1).to(z) for _ in range(self.nreg))
-        method = self.solver if self.training else self.test_solver
-        state_t = odeint(
-            self.odefunc, (z, _logpz) + reg_states,
-            integration_times.to(z), atol=atol, rtol=rtol, method=method, options=self.solver_options
-        )
+
+        if self.training:
+            state_t = odeint(
+                self.odefunc,
+                (z, _logpz) + reg_states,
+                integration_times.to(z),
+                atol=self.atol,
+                rtol=self.rtol,
+                method=self.solver,
+                options=self.solver_options,
+            )
+        else:
+            state_t = odeint(
+                self.odefunc,
+                (z, _logpz) + reg_states,
+                integration_times.to(z),
+                atol=self.test_atol,
+                rtol=self.test_rtol,
+                method=self.test_solver,
+            )
 
         if len(integration_times) == 2:
             state_t = tuple(s[1] for s in state_t)
