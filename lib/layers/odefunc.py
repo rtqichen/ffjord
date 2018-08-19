@@ -46,6 +46,7 @@ class ODEnet(nn.Module):
             base_layer = {
                 "ignore": diffeq_layers.IgnoreConv2d,
                 "hyper": diffeq_layers.HyperConv2d,
+                "squash": diffeq_layers.SquashConv2d,
                 "concat": diffeq_layers.ConcatConv2d,
                 "blend": diffeq_layers.BlendConv2d,
                 "concatcoord": diffeq_layers.ConcatCoordConv2d,
@@ -115,6 +116,7 @@ class AutoencoderDiffEqNet(nn.Module):
             base_layer = {
                 "ignore": diffeq_layers.IgnoreConv2d,
                 "hyper": diffeq_layers.HyperConv2d,
+                "squash": diffeq_layers.SquashConv2d,
                 "concat": diffeq_layers.ConcatConv2d,
                 "blend": diffeq_layers.BlendConv2d,
                 "concatcoord": diffeq_layers.ConcatCoordConv2d,
@@ -124,6 +126,7 @@ class AutoencoderDiffEqNet(nn.Module):
             base_layer = {
                 "ignore": diffeq_layers.IgnoreLinear,
                 "hyper": diffeq_layers.HyperLinear,
+                "squash": diffeq_layers.SquashLinear,
                 "concat": diffeq_layers.ConcatLinear,
                 "blend": diffeq_layers.BlendLinear,
                 "concatcoord": diffeq_layers.ConcatLinear,
