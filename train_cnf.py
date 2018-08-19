@@ -9,8 +9,8 @@ import torch.optim as optim
 import torchvision.datasets as dset
 import torchvision.transforms as tforms
 from torchvision.utils import save_image
-import lib.spectral_norm as spectral_norm
 
+import lib.spectral_norm as spectral_norm
 import lib.layers as layers
 import lib.layers.wrappers.cnf_regularization as reg_lib
 import lib.utils as utils
@@ -288,7 +288,10 @@ def set_cnf_options(model):
     model.apply(_set)
 
 
-def create_model(args):
+def create_model(args, data_shape, regularization_fns):
+    hidden_dims = tuple(map(int, args.dims.split(",")))
+    strides = tuple(map(int, args.strides.split(",")))
+
     if args.multiscale:
         model = odenvp.ODENVP(
             (args.batch_size, *data_shape),
@@ -364,12 +367,9 @@ if __name__ == "__main__":
     # load dataset
     train_set, test_loader, data_shape = get_dataset(args)
 
-    hidden_dims = tuple(map(int, args.dims.split(",")))
-    strides = tuple(map(int, args.strides.split(",")))
-
     # build model
     regularization_fns, regularization_coeffs = create_regularization_fns()
-    model = create_model(args)
+    model = create_model(args, data_shape, regularization_fns)
 
     if args.spectral_norm: add_spectral_norm(model)
     set_cnf_options(model)
