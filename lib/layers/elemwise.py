@@ -1,7 +1,6 @@
 import math
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 _DEFAULT_ALPHA = 1e-6
 
@@ -64,7 +63,7 @@ def _logit(x, logpx=None, alpha=_DEFAULT_ALPHA):
 
 
 def _sigmoid(y, logpy=None, alpha=_DEFAULT_ALPHA):
-    x = (F.sigmoid(y) - alpha) / (1 - 2 * alpha)
+    x = (torch.sigmoid(y) - alpha) / (1 - 2 * alpha)
     if logpy is None:
         return x
     return x, logpy + _logdetgrad(x, alpha).view(x.size(0), -1).sum(1, keepdim=True)
