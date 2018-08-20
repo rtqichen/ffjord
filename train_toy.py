@@ -27,7 +27,7 @@ parser.add_argument(
 )
 parser.add_argument('--dims', type=str, default='64,64,64')
 parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
-parser.add_argument('--time_length', type=float, default=1.0)
+parser.add_argument('--time_length', type=float, default=0.5)
 parser.add_argument('--train_T', type=eval, default=True)
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
@@ -45,6 +45,7 @@ parser.add_argument('--residual', type=eval, default=False, choices=[True, False
 parser.add_argument('--rademacher', type=eval, default=True, choices=[True, False])
 parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
 parser.add_argument('--batch_norm', type=eval, default=False, choices=[True, False])
+parser.add_argument('--bn_lag', type=float, default=0)
 
 parser.add_argument('--niters', type=int, default=10000)
 parser.add_argument('--batch_size', type=int, default=200)
@@ -171,7 +172,7 @@ def build_model(args):
 
     chain = [build_cnf() for _ in range(args.num_blocks)]
     if args.batch_norm:
-        bn_layers = [layers.MovingBatchNorm1d(2) for _ in range(args.num_blocks)]
+        bn_layers = [layers.MovingBatchNorm1d(2, bn_lag=args.bn_lag) for _ in range(args.num_blocks)]
         bn_chain = []
         for a, b in zip(chain, bn_layers):
             bn_chain.append(a)
@@ -183,19 +184,19 @@ def build_model(args):
 
 
 def get_transforms(model):
-    def _sample(z, logpz=None):
+    def sample_fn(z, logpz=None):
         if logpz is not None:
             return model(z, logpz, reverse=True)
         else:
             return model(z, reverse=True)
 
-    def _density(x, logpx=None):
+    def density_fn(x, logpx=None):
         if logpx is not None:
             return model(x, logpx, reverse=False)
         else:
             return model(x, reverse=False)
 
-    return _sample, _density
+    return sample_fn, density_fn
 
 
 def compute_loss(args, model, batch_size=None):
@@ -273,16 +274,17 @@ if __name__ == '__main__':
                 model.eval()
                 p_samples = toy_data.inf_train_gen(args.data, batch_size=3000)
 
-                transform, inverse_transform = get_transforms(model)
+                sample_fn, density_fn = get_transforms(model)
 
                 plt.figure(figsize=(9, 3))
                 visualize_transform(
-                    p_samples, torch.randn, standard_normal_logprob, transform=transform,
-                    inverse_transform=inverse_transform, samples=True, device=device
+                    p_samples, torch.randn, standard_normal_logprob, transform=sample_fn, inverse_transform=density_fn,
+                    samples=True, device=device
                 )
                 fig_filename = os.path.join(args.save, 'figs', '{:04d}.jpg'.format(itr))
                 utils.makedirs(os.path.dirname(fig_filename))
                 plt.savefig(fig_filename)
+                plt.close()
                 model.train()
 
         end = time.time()
