@@ -222,7 +222,11 @@ class ODEfunc(nn.Module):
             y.requires_grad_(True)
             t.requires_grad_(True)
             dy = self.diffeq(t, y)
-            divergence = self.divergence_fn(dy, y, e=self._e).view(batchsize, 1)
+            # Hack for 2D data to use brute force divergence computation.
+            if not self.training and dy.view(dy.shape[0], -1).shape[1] == 2:
+                divergence = divergence_bf(dy, y).view(batchsize, 1)
+            else:
+                divergence = self.divergence_fn(dy, y, e=self._e).view(batchsize, 1)
         if self.residual:
             dy = dy - y
             divergence -= torch.ones_like(divergence) * torch.tensor(np.prod(y.shape[1:]), dtype=torch.float32
