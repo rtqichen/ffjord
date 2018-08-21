@@ -32,15 +32,27 @@ def sample_gaussian_like(y):
     return torch.randn_like(y)
 
 
+class Swish(nn.Module):
+    def __init__(self):
+        super(Swish, self).__init__()
+        self.beta = nn.Parameter(torch.tensor(1.0))
+
+    def forward(self, x):
+        return x * torch.sigmoid(self.beta * x)
+
+
 class ODEnet(nn.Module):
     """
     Helper class to make neural nets for use in continuous normalizing flows
     """
 
+    NONLINEARITIES = {
+        "tanh": nn.Tanh(), "relu": nn.ReLU(), "softplus": nn.Softplus(), "elu": nn.ELU(), "swish": Swish()
+    }
+
     def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus"):
         super(ODEnet, self).__init__()
 
-        self.nonlinearity = {"tanh": F.tanh, "relu": F.relu, "softplus": F.softplus, "elu": F.elu}[nonlinearity]
         if conv:
             assert len(strides) == len(hidden_dims) + 1
             base_layer = {
@@ -66,6 +78,7 @@ class ODEnet(nn.Module):
 
         # build layers and add them
         layers = []
+        activation_fns = []
         hidden_shape = input_shape
 
         for dim_out, stride in zip(hidden_dims + (input_shape[0],), strides):
@@ -82,6 +95,7 @@ class ODEnet(nn.Module):
 
             layer = base_layer(hidden_shape[0], dim_out, **layer_kwargs)
             layers.append(layer)
+            activation_fns.append(self.NONLINEARITIES[nonlinearity])
 
             hidden_shape = list(copy.copy(hidden_shape))
             hidden_shape[0] = dim_out
@@ -91,6 +105,7 @@ class ODEnet(nn.Module):
                 hidden_shape[1], hidden_shape[2] = hidden_shape[1] * 2, hidden_shape[2] * 2
 
         self.layers = nn.ModuleList(layers)
+        self.activation_fns = nn.ModuleList(activation_fns[:-1])
 
     def forward(self, t, y):
         dx = y
@@ -98,7 +113,7 @@ class ODEnet(nn.Module):
             dx = layer(t, dx)
             # if not last layer, use nonlinearity
             if l < len(self.layers) - 1:
-                dx = self.nonlinearity(dx)
+                dx = self.activation_fns[l](dx)
         return dx
 
 
