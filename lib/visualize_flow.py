@@ -47,7 +47,7 @@ def plt_flow(prior_logdensity, transform, ax, npts=400, title="$q(x)$", device="
     yy = z[:, 1].cpu().numpy().reshape(npts, npts)
     qz = np.exp(logqz.cpu().numpy()).reshape(npts, npts)
 
-    plt.pcolormesh(xx, yy, qz, vmin=0, vmax=1)
+    plt.pcolormesh(xx, yy, qz)
     ax.set_xlim(LOW, HIGH)
     ax.set_ylim(LOW, HIGH)
     cmap = matplotlib.cm.get_cmap(None)
@@ -72,9 +72,7 @@ def plt_flow_density(prior_logdensity, inverse_transform, ax, npts=200, title="$
 
     px = np.exp(logpx.cpu().numpy()).reshape(npts, npts)
 
-    plt.pcolormesh(xx, yy, px, vmin=0, vmax=1)
-    ax.set_xlim(LOW, HIGH)
-    ax.set_ylim(LOW, HIGH)
+    plt.imshow(px)
     ax.invert_yaxis()
     ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])

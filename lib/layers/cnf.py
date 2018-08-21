@@ -19,9 +19,8 @@ class CNF(nn.Module):
 
         nreg = 0
         if regularization_fns is not None:
-            for reg_fn in regularization_fns:
-                odefunc = RegularizedODEfunc(odefunc, reg_fn)
-                nreg += 1
+            odefunc = RegularizedODEfunc(odefunc, regularization_fns)
+            nreg = len(regularization_fns)
         self.odefunc = odefunc
         self.nreg = nreg
         self.regularization_states = None
@@ -49,22 +48,22 @@ class CNF(nn.Module):
         self.odefunc.before_odeint()
 
         # Add regularization states.
-        reg_states = tuple(torch.zeros(1).to(z) for _ in range(self.nreg))
+        reg_states = tuple(torch.tensor(0).to(z) for _ in range(self.nreg))
 
         if self.training:
             state_t = odeint(
                 self.odefunc,
                 (z, _logpz) + reg_states,
                 integration_times.to(z),
-                atol=self.atol,
-                rtol=self.rtol,
+                atol=[self.atol, self.atol] + [float('inf')] * len(reg_states),
+                rtol=[self.rtol, self.rtol] + [float('inf')] * len(reg_states),
                 method=self.solver,
                 options=self.solver_options,
             )
         else:
             state_t = odeint(
                 self.odefunc,
-                (z, _logpz) + reg_states,
+                (z, _logpz),
                 integration_times.to(z),
                 atol=self.test_atol,
                 rtol=self.test_rtol,

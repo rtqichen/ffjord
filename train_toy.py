@@ -2,6 +2,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+import six
 import argparse
 import os
 import time
@@ -10,6 +11,7 @@ import math
 import torch
 import torch.optim as optim
 
+import lib.layers.wrappers.cnf_regularization as reg_lib
 import lib.spectral_norm as spectral_norm
 import lib.layers as layers
 import lib.toy_data as toy_data
@@ -52,6 +54,14 @@ parser.add_argument('--batch_size', type=int, default=200)
 parser.add_argument('--test_batch_size', type=int, default=1000)
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--weight_decay', type=float, default=0)
+
+# Track quantities
+parser.add_argument('--l1int', type=float, default=None, help="int_t ||f||_1")
+parser.add_argument('--l2int', type=float, default=None, help="int_t ||f||_2")
+parser.add_argument('--dl2int', type=float, default=None, help="int_t ||f^T df/dt||_2")
+parser.add_argument('--JFrobint', type=float, default=None, help="int_t ||df/dx||_F")
+parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df_i/dx_i||_F")
+parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
 
 parser.add_argument('--save', type=str, default='experiments/cnf')
 parser.add_argument('--viz_freq', type=int, default=100)
@@ -143,7 +153,50 @@ def spectral_norm_power_iteration(model, n_power_iterations=1):
     model.apply(recursive_power_iteration)
 
 
-def build_model(args):
+REGULARIZATION_FNS = {
+    "l1int": reg_lib.l1_regularzation_fn,
+    "l2int": reg_lib.l2_regularzation_fn,
+    "dl2int": reg_lib.directional_l2_regularization_fn,
+    "JFrobint": reg_lib.jacobian_frobenius_regularization_fn,
+    "JdiagFrobint": reg_lib.jacobian_diag_frobenius_regularization_fn,
+    "JoffdiagFrobint": reg_lib.jacobian_offdiag_frobenius_regularization_fn,
+}
+
+INV_REGULARIZATION_FNS = {v: k for k, v in six.iteritems(REGULARIZATION_FNS)}
+
+
+def append_regularization_to_log(log_message, regularization_fns, reg_states):
+    for i, reg_fn in enumerate(regularization_fns):
+        log_message = log_message + " | " + INV_REGULARIZATION_FNS[reg_fn] + ": {:.8f}".format(reg_states[i].item())
+    return log_message
+
+
+def create_regularization_fns():
+    regularization_fns = []
+    regularization_coeffs = []
+
+    for arg_key, reg_fn in six.iteritems(REGULARIZATION_FNS):
+        if eval("args." + arg_key) is not None:
+            regularization_fns.append(reg_fn)
+            regularization_coeffs.append(eval("args." + arg_key))
+
+    regularization_fns = tuple(regularization_fns)
+    regularization_coeffs = tuple(regularization_coeffs)
+    return regularization_fns, regularization_coeffs
+
+
+def get_regularization(model, regularization_coeffs):
+    if len(regularization_coeffs) == 0:
+        return None
+
+    acc_reg_states = tuple([0.] * len(regularization_coeffs))
+    for module in model.modules():
+        if isinstance(module, layers.CNF):
+            acc_reg_states = tuple(acc + reg for acc, reg in zip(acc_reg_states, module.get_regularization_states()))
+    return acc_reg_states
+
+
+def build_model(args, regularization_fns):
 
     hidden_dims = tuple(map(int, args.dims.split(",")))
 
@@ -166,6 +219,7 @@ def build_model(args):
             odefunc=odefunc,
             T=args.time_length,
             train_T=args.train_T,
+            regularization_fns=regularization_fns,
             solver=args.solver,
         )
         return cnf
@@ -220,7 +274,8 @@ def compute_loss(args, model, batch_size=None):
 
 if __name__ == '__main__':
 
-    model = build_model(args).to(device)
+    regularization_fns, regularization_coeffs = create_regularization_fns()
+    model = build_model(args, regularization_fns).to(device)
     if args.spectral_norm: add_spectral_norm(model)
     set_cnf_options(model)
 
@@ -240,25 +295,38 @@ if __name__ == '__main__':
         if args.spectral_norm: spectral_norm_power_iteration(model, 1)
 
         loss = compute_loss(args, model)
-        loss.backward()
 
+        if len(regularization_coeffs) > 0:
+            reg_states = get_regularization(model, regularization_coeffs)
+            reg_loss = sum(
+                reg_state * coeff for reg_state, coeff in zip(reg_states, regularization_coeffs) if coeff != 0
+            )
+            loss = loss + reg_loss
+
+        loss.backward()
         optimizer.step()
 
         time_meter.update(time.time() - end)
         loss_meter.update(loss.item())
         nfe_meter.update(count_nfe(model))
 
-        logger.info(
-            'Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | NFE {:.0f}({:.1f})'.
-            format(itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, nfe_meter.val, nfe_meter.avg)
+        log_message = (
+            'Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | NFE {:.0f}({:.1f})'.format(
+                itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, nfe_meter.val, nfe_meter.avg
+            )
         )
+        if len(regularization_coeffs) > 0:
+            log_message = append_regularization_to_log(log_message, regularization_fns, reg_states)
+
+        logger.info(log_message)
 
         if itr % args.val_freq == 0:
             with torch.no_grad():
                 model.eval()
                 test_loss = compute_loss(args, model, batch_size=args.test_batch_size)
                 test_nfe = count_nfe(model)
-                logger.info('Iter {:04d} | Test Loss {:.6f} | NFE {:.0f}'.format(itr, test_loss, test_nfe))
+                log_message = '[TEST] Iter {:04d} | Test Loss {:.6f} | NFE {:.0f}'.format(itr, test_loss, test_nfe)
+                logger.info(log_message)
 
                 if test_loss.item() < best_loss:
                     best_loss = test_loss.item()
@@ -272,7 +340,7 @@ if __name__ == '__main__':
         if itr % args.viz_freq == 0:
             with torch.no_grad():
                 model.eval()
-                p_samples = toy_data.inf_train_gen(args.data, batch_size=3000)
+                p_samples = toy_data.inf_train_gen(args.data, batch_size=10000)
 
                 sample_fn, density_fn = get_transforms(model)
 
