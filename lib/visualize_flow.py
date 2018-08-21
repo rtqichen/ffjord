@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import torch
 
@@ -72,8 +73,7 @@ def plt_flow_density(prior_logdensity, inverse_transform, ax, npts=200, title="$
 
     px = np.exp(logpx.cpu().numpy()).reshape(npts, npts)
 
-    plt.imshow(px)
-    ax.invert_yaxis()
+    ax.imshow(px)
     ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])
     ax.set_title(title)
