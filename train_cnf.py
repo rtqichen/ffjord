@@ -58,6 +58,8 @@ parser.add_argument("--test_batch_size", type=int, default=200)
 parser.add_argument("--lr", type=float, default=1e-3)
 parser.add_argument("--warmup_iters", type=float, default=1000)
 parser.add_argument("--weight_decay", type=float, default=0.0)
+parser.add_argument("--spectral_norm_niter", type=int, default=10)
+
 
 parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
 parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
@@ -454,7 +456,7 @@ if __name__ == "__main__":
         for _, (x, y) in enumerate(train_loader):
             start = time.time()
             update_lr(optimizer, itr)
-            if args.spectral_norm: spectral_norm_power_iteration(model, 1)
+            if args.spectral_norm: spectral_norm_power_iteration(model, args.spectral_norm_niter)
 
             optimizer.zero_grad()
 
