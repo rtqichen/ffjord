@@ -53,7 +53,7 @@ parser.add_argument('--niters', type=int, default=10000)
 parser.add_argument('--batch_size', type=int, default=200)
 parser.add_argument('--test_batch_size', type=int, default=1000)
 parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--weight_decay', type=float, default=0)
+parser.add_argument('--weight_decay', type=float, default=1e-5)
 
 # Track quantities
 parser.add_argument('--l1int', type=float, default=None, help="int_t ||f||_1")
@@ -340,7 +340,7 @@ if __name__ == '__main__':
         if itr % args.viz_freq == 0:
             with torch.no_grad():
                 model.eval()
-                p_samples = toy_data.inf_train_gen(args.data, batch_size=10000)
+                p_samples = toy_data.inf_train_gen(args.data, batch_size=2000)
 
                 sample_fn, density_fn = get_transforms(model)
 

@@ -8,7 +8,7 @@ LOW = -4
 HIGH = 4
 
 
-def plt_potential_func(potential, ax, npts=200, title="$p(x)$"):
+def plt_potential_func(potential, ax, npts=100, title="$p(x)$"):
     """
     Args:
         potential: computes U(z_k) given z_k
@@ -29,7 +29,7 @@ def plt_potential_func(potential, ax, npts=200, title="$p(x)$"):
     ax.set_title(title)
 
 
-def plt_flow(prior_logdensity, transform, ax, npts=400, title="$q(x)$", device="cpu"):
+def plt_flow(prior_logdensity, transform, ax, npts=100, title="$q(x)$", device="cpu"):
     """
     Args:
         transform: computes z_k and log(q_k) given z_0
@@ -59,7 +59,7 @@ def plt_flow(prior_logdensity, transform, ax, npts=400, title="$q(x)$", device="
     ax.set_title(title)
 
 
-def plt_flow_density(prior_logdensity, inverse_transform, ax, npts=200, title="$q(x)$", device="cpu"):
+def plt_flow_density(prior_logdensity, inverse_transform, ax, npts=100, title="$q(x)$", device="cpu"):
     side = np.linspace(LOW, HIGH, npts)
     xx, yy = np.meshgrid(side, side)
     x = np.hstack([xx.reshape(-1, 1), yy.reshape(-1, 1)])
@@ -82,7 +82,7 @@ def plt_flow_density(prior_logdensity, inverse_transform, ax, npts=200, title="$
 def plt_flow_samples(prior_sample, transform, ax, title="$x ~ q(x)$", device="cpu"):
     z = prior_sample(10000, 2).type(torch.float32).to(device)
     zk = transform(z).cpu().numpy()
-    ax.hist2d(zk[:, 0], zk[:, 1], range=[[LOW, HIGH], [LOW, HIGH]], bins=200)
+    ax.hist2d(zk[:, 0], zk[:, 1], range=[[LOW, HIGH], [LOW, HIGH]], bins=100)
     ax.invert_yaxis()
     ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])
@@ -90,7 +90,7 @@ def plt_flow_samples(prior_sample, transform, ax, title="$x ~ q(x)$", device="cp
 
 
 def plt_samples(samples, ax, title="$x ~ p(x)$"):
-    ax.hist2d(samples[:, 0], samples[:, 1], range=[[LOW, HIGH], [LOW, HIGH]], bins=200)
+    ax.hist2d(samples[:, 0], samples[:, 1], range=[[LOW, HIGH], [LOW, HIGH]], bins=100)
     ax.invert_yaxis()
     ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])
