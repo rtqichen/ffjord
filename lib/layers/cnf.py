@@ -54,8 +54,8 @@ class CNF(nn.Module):
                 self.odefunc,
                 (z, _logpz) + reg_states,
                 integration_times.to(z),
-                atol=[self.atol, self.atol] + [float(1e10)] * len(reg_states),
-                rtol=[self.rtol, self.rtol] + [float(1e10)] * len(reg_states),
+                atol=self.atol,
+                rtol=self.rtol,
                 method=self.solver,
                 options=self.solver_options,
             )
