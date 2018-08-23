@@ -15,7 +15,6 @@ class CNF(nn.Module):
             self.register_parameter("sqrt_end_time", nn.Parameter(torch.sqrt(torch.tensor(T))))
         else:
             self.register_buffer("sqrt_end_time", torch.sqrt(torch.tensor(T)))
-        self.integration_times = torch.tensor([0.0, self.sqrt_end_time * self.sqrt_end_time])
 
         nreg = 0
         if regularization_fns is not None:
@@ -40,7 +39,7 @@ class CNF(nn.Module):
             _logpz = logpz
 
         if integration_times is None:
-            integration_times = self.integration_times
+            integration_times = torch.tensor([0.0, self.sqrt_end_time * self.sqrt_end_time]).to(z)
         if reverse:
             integration_times = _flip(integration_times, 0)
 
@@ -55,8 +54,8 @@ class CNF(nn.Module):
                 self.odefunc,
                 (z, _logpz) + reg_states,
                 integration_times.to(z),
-                atol=[self.atol, self.atol] + [float(1000)] * len(reg_states),
-                rtol=[self.rtol, self.rtol] + [float(1000)] * len(reg_states),
+                atol=[self.atol, self.atol] + [float(1e10)] * len(reg_states),
+                rtol=[self.rtol, self.rtol] + [float(1e10)] * len(reg_states),
                 method=self.solver,
                 options=self.solver_options,
             )

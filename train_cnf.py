@@ -1,5 +1,6 @@
 import argparse
 import os
+import six
 import time
 import math
 import numpy as np
@@ -31,7 +32,9 @@ parser.add_argument(
     choices=["ignore", "concat", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
 )
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
-parser.add_argument("--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu"])
+parser.add_argument(
+    "--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu", "swish"]
+)
 parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
 parser.add_argument('--atol', type=float, default=1e-5)
 parser.add_argument('--rtol', type=float, default=1e-5)
@@ -51,7 +54,7 @@ parser.add_argument("--batch_size", type=int, default=200)
 parser.add_argument(
     "--batch_size_schedule", type=str, default="", help="Increases the batchsize at every given epoch, dash separated."
 )
-parser.add_argument("--test_batch_size", type=int, default=2000)
+parser.add_argument("--test_batch_size", type=int, default=200)
 parser.add_argument("--lr", type=float, default=1e-3)
 parser.add_argument("--warmup_iters", type=float, default=1000)
 parser.add_argument("--weight_decay", type=float, default=0.0)
@@ -65,11 +68,17 @@ parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, 
 parser.add_argument('--multiscale', type=eval, default=False, choices=[True, False])
 
 # Regularizations
-parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
-parser.add_argument("--dl2_coeff", type=float, default=0, help="Directional L2 on dynamics.")
+parser.add_argument('--l1int', type=float, default=None, help="int_t ||f||_1")
+parser.add_argument('--l2int', type=float, default=None, help="int_t ||f||_2")
+parser.add_argument('--dl2int', type=float, default=None, help="int_t ||f^T df/dt||_2")
+parser.add_argument('--JFrobint', type=float, default=None, help="int_t ||df/dx||_F")
+parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df_i/dx_i||_F")
+parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
+
+parser.add_argument("--time_penalty", type=float, default=0, help="Regularization on the end_time.")
 parser.add_argument(
     "--max_grad_norm", type=float, default=1e10,
-    help="Max norm of graidents (default is just stupidly high to avoid any clipping"
+    help="Max norm of graidents (default is just stupidly high to avoid any clipping)"
 )
 
 parser.add_argument("--begin_epoch", type=int, default=1)
@@ -176,7 +185,7 @@ def get_dataset(args):
     return train_set, test_loader, data_shape
 
 
-def compute_bits_per_dim(x, model, regularization_coeffs=None):
+def compute_bits_per_dim(x, model):
     zero = torch.zeros(x.shape[0], 1).to(x)
 
     # Don't use data parallelize if batch size is small.
@@ -191,16 +200,11 @@ def compute_bits_per_dim(x, model, regularization_coeffs=None):
     logpx_per_dim = torch.sum(logpx) / x.nelement()  # averaged over batches
     bits_per_dim = -(logpx_per_dim - np.log(256)) / np.log(2)
 
-    if regularization_coeffs:
-        regularization = get_regularization(model, regularization_coeffs)
-    else:
-        regularization = torch.tensor(0.).to(bits_per_dim)
-
-    return bits_per_dim, regularization
+    return bits_per_dim
 
 
 def count_nfe(model):
-    class AccNumEvals(object):
+    class Accumulator(object):
         def __init__(self):
             self.num_evals = 0
 
@@ -208,7 +212,7 @@ def count_nfe(model):
             if isinstance(module, layers.CNF):
                 self.num_evals += module.num_evals()
 
-    accumulator = AccNumEvals()
+    accumulator = Accumulator()
     model.apply(accumulator)
     return accumulator.num_evals
 
@@ -217,29 +221,61 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
+def get_total_time(model):
+    class Accumulator(object):
+        def __init__(self):
+            self.total_time = 0
+
+        def __call__(self, module):
+            if isinstance(module, layers.CNF):
+                self.total_time = self.total_time + module.sqrt_end_time * module.sqrt_end_time
+
+    accumulator = Accumulator()
+    model.apply(accumulator)
+    return accumulator.total_time
+
+
+REGULARIZATION_FNS = {
+    "l1int": reg_lib.l1_regularzation_fn,
+    "l2int": reg_lib.l2_regularzation_fn,
+    "dl2int": reg_lib.directional_l2_regularization_fn,
+    "JFrobint": reg_lib.jacobian_frobenius_regularization_fn,
+    "JdiagFrobint": reg_lib.jacobian_diag_frobenius_regularization_fn,
+    "JoffdiagFrobint": reg_lib.jacobian_offdiag_frobenius_regularization_fn,
+}
+
+INV_REGULARIZATION_FNS = {v: k for k, v in six.iteritems(REGULARIZATION_FNS)}
+
+
+def append_regularization_to_log(log_message, regularization_fns, reg_states):
+    for i, reg_fn in enumerate(regularization_fns):
+        log_message = log_message + " | " + INV_REGULARIZATION_FNS[reg_fn] + ": {:.8f}".format(reg_states[i].item())
+    return log_message
+
+
 def create_regularization_fns():
     regularization_fns = []
     regularization_coeffs = []
-    if args.l2_coeff != 0:
-        regularization_coeffs.append(args.l2_coeff)
-        regularization_fns.append(reg_lib.l2_regularzation_fn)
-    if args.dl2_coeff != 0:
-        regularization_coeffs.append(args.dl2_coeff)
-        regularization_fns.append(reg_lib.directional_l2_regularization_fn)
-    regularization_coeffs = tuple(regularization_coeffs)
+
+    for arg_key, reg_fn in six.iteritems(REGULARIZATION_FNS):
+        if eval("args." + arg_key) is not None:
+            regularization_fns.append(reg_fn)
+            regularization_coeffs.append(eval("args." + arg_key))
+
     regularization_fns = tuple(regularization_fns)
+    regularization_coeffs = tuple(regularization_coeffs)
     return regularization_fns, regularization_coeffs
 
 
 def get_regularization(model, regularization_coeffs):
     if len(regularization_coeffs) == 0:
-        return None
+        return ()
 
     acc_reg_states = tuple([0.] * len(regularization_coeffs))
     for module in model.modules():
         if isinstance(module, layers.CNF):
             acc_reg_states = tuple(acc + reg for acc, reg in zip(acc_reg_states, module.get_regularization_states()))
-    return sum(state * coeff for state, coeff in zip(acc_reg_states, regularization_coeffs))
+    return acc_reg_states
 
 
 def add_spectral_norm(model):
@@ -301,7 +337,7 @@ def create_model(args, data_shape, regularization_fns):
             n_blocks=args.num_blocks,
             intermediate_dims=hidden_dims,
             alpha=args.alpha,
-            cnf_kwargs={"T": args.time_length, "train_T": args.train_T},
+            cnf_kwargs={"T": args.time_length, "train_T": args.train_T, "regularization_fns": regularization_fns},
         )
     else:
         if args.autoencode:
@@ -405,8 +441,10 @@ if __name__ == "__main__":
     time_meter = utils.RunningAverageMeter(0.97)
     loss_meter = utils.RunningAverageMeter(0.97)
     steps_meter = utils.RunningAverageMeter(0.97)
-    reg_meter = utils.RunningAverageMeter(0.97)
     grad_meter = utils.RunningAverageMeter(0.97)
+    tt_meter = utils.RunningAverageMeter(0.97)
+
+    if args.spectral_norm and not args.resume: spectral_norm_power_iteration(model, 500)
 
     best_loss = float("inf")
     itr = 0
@@ -416,7 +454,7 @@ if __name__ == "__main__":
         for _, (x, y) in enumerate(train_loader):
             start = time.time()
             update_lr(optimizer, itr)
-            if args.spectral_norm: spectral_norm_power_iteration(model, 10)
+            if args.spectral_norm: spectral_norm_power_iteration(model, 1)
 
             optimizer.zero_grad()
 
@@ -427,26 +465,38 @@ if __name__ == "__main__":
             x = cvt(x)
 
             # compute loss
-            bits_per_dim, regularization = compute_bits_per_dim(x, model, regularization_coeffs)
-            (bits_per_dim + regularization).backward()
+            loss = compute_bits_per_dim(x, model)
+            if regularization_coeffs:
+                reg_states = get_regularization(model, regularization_coeffs)
+                reg_loss = sum(
+                    reg_state * coeff for reg_state, coeff in zip(reg_states, regularization_coeffs) if coeff != 0
+                )
+                loss = loss + reg_loss
+            total_time = get_total_time(model)
+            loss = loss + total_time * args.time_penalty
+
+            loss.backward()
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
             optimizer.step()
 
             time_meter.update(time.time() - start)
-            loss_meter.update(bits_per_dim.item())
+            loss_meter.update(loss.item())
             steps_meter.update(count_nfe(model))
-            reg_meter.update(regularization.item())
             grad_meter.update(grad_norm)
+            tt_meter.update(total_time)
 
             if itr % args.log_freq == 0:
-                logger.info(
+                log_message = (
                     "Iter {:04d} | Time {:.4f}({:.4f}) | Bit/dim {:.4f}({:.4f}) | "
-                    "Steps {:.0f}({:.2f}) | Reg {:.4f}({:.4f}) | Grad Norm {:.4f}({:.4f})".format(
+                    "Steps {:.0f}({:.2f}) | Grad Norm {:.4f}({:.4f}) | Total Time {:.2f}({:.2f})".format(
                         itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, steps_meter.val,
-                        steps_meter.avg, reg_meter.val, reg_meter.avg, grad_meter.val, grad_meter.avg
+                        steps_meter.avg, grad_meter.val, grad_meter.avg, tt_meter.val, tt_meter.avg
                     )
                 )
+                if regularization_coeffs:
+                    log_message = append_regularization_to_log(log_message, regularization_fns, reg_states)
+                logger.info(log_message)
 
             itr += 1
 
@@ -461,7 +511,7 @@ if __name__ == "__main__":
                     if not args.conv:
                         x = x.view(x.shape[0], -1)
                     x = cvt(x)
-                    loss, _ = compute_bits_per_dim(x, model)
+                    loss = compute_bits_per_dim(x, model)
                     losses.append(loss)
 
                 loss = np.mean(losses)

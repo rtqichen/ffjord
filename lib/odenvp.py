@@ -22,6 +22,7 @@ class ODENVP(nn.Module):
         n_scale=float('inf'),
         n_blocks=2,
         intermediate_dims=(32,),
+        nonlinearity="softplus",
         squash_input=True,
         alpha=0.05,
         cnf_kwargs=None,
@@ -30,6 +31,7 @@ class ODENVP(nn.Module):
         self.n_scale = min(n_scale, self._calc_n_scale(input_size))
         self.n_blocks = n_blocks
         self.intermediate_dims = intermediate_dims
+        self.nonlinearity = nonlinearity
         self.squash_input = squash_input
         self.alpha = alpha
         self.cnf_kwargs = cnf_kwargs if cnf_kwargs else {}
@@ -54,6 +56,7 @@ class ODENVP(nn.Module):
                     if self.squash_input and i == 0 else None,
                     n_blocks=self.n_blocks,
                     cnf_kwargs=self.cnf_kwargs,
+                    nonlinearity=self.nonlinearity,
                 )
             )
             c, h, w = c * 2, h // 2, w // 2
@@ -137,6 +140,7 @@ class StackedCNFLayers(layers.SequentialFlow):
         self,
         initial_size,
         idims=(32,),
+        nonlinearity="softplus",
         squeeze=True,
         init_layer=None,
         n_blocks=1,
@@ -148,7 +152,7 @@ class StackedCNFLayers(layers.SequentialFlow):
             chain.append(init_layer)
 
         def _make_odefunc(size):
-            net = ODEnet(idims, size, strides, True, layer_type="concat")
+            net = ODEnet(idims, size, strides, True, layer_type="concat", nonlinearity=nonlinearity)
             f = layers.ODEfunc(net)
             return f
 
