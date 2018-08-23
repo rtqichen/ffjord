@@ -295,6 +295,7 @@ if __name__ == '__main__':
         if args.spectral_norm: spectral_norm_power_iteration(model, 1)
 
         loss = compute_loss(args, model)
+        loss_meter.update(loss.item())
 
         if len(regularization_coeffs) > 0:
             reg_states = get_regularization(model, regularization_coeffs)
@@ -307,7 +308,6 @@ if __name__ == '__main__':
         optimizer.step()
 
         time_meter.update(time.time() - end)
-        loss_meter.update(loss.item())
         nfe_meter.update(count_nfe(model))
 
         log_message = (
