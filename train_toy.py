@@ -25,13 +25,13 @@ parser.add_argument(
 )
 parser.add_argument(
     "--layer_type", type=str, default="concatsquash",
-    choices=["ignore", "concat", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
+    choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
 )
-parser.add_argument('--dims', type=str, default='64,64,64')
+parser.add_argument('--dims', type=str, default='64-64-64')
 parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
 parser.add_argument('--time_length', type=float, default=0.5)
 parser.add_argument('--train_T', type=eval, default=True)
-parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
+parser.add_argument("--divergence_fn", type=str, default="brute_force", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="tanh", choices=["tanh", "relu", "softplus", "elu", "swish"])
 
 parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
@@ -198,7 +198,7 @@ def get_regularization(model, regularization_coeffs):
 
 def build_model(args, regularization_fns):
 
-    hidden_dims = tuple(map(int, args.dims.split(",")))
+    hidden_dims = tuple(map(int, args.dims.split("-")))
 
     def build_cnf():
         diffeq = layers.ODEnet(
