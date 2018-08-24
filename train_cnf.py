@@ -60,7 +60,6 @@ parser.add_argument("--warmup_iters", type=float, default=1000)
 parser.add_argument("--weight_decay", type=float, default=0.0)
 parser.add_argument("--spectral_norm_niter", type=int, default=10)
 
-
 parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
 parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
 parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
