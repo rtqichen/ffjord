@@ -6,7 +6,7 @@ import sklearn.datasets
 # Dataset iterator
 def inf_train_gen(data, rng=None, batch_size=200):
     if rng is None:
-        rng = np.random.RandomState(0)
+        rng = np.random.RandomState()
 
     if data == "swissroll":
         data = sklearn.datasets.make_swiss_roll(n_samples=batch_size, noise=1.0)[0]
