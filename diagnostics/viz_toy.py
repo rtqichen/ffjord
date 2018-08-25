@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import torch
 
 
+<<<<<<< HEAD
 def standard_normal_logprob(z):
     logZ = -0.5 * math.log(2 * math.pi)
     return logZ - z.pow(2) / 2
@@ -17,6 +18,8 @@ def makedirs(dirname):
         os.makedirs(dirname)
 
 
+=======
+>>>>>>> 59af3596a4a4ff6901987f1b9f17f609dc6e4a75
 def save_trajectory(model, data_samples, savedir, ntimes=101, memory=0.01, device='cpu'):
     model.eval()
 
@@ -120,7 +123,11 @@ def save_trajectory(model, data_samples, savedir, ntimes=101, memory=0.01, devic
                 ax.axis("off")
                 ax.set_title("Vector Field", fontsize=32)
 
+<<<<<<< HEAD
                 makedirs(savedir)
+=======
+                utils.makedirs(savedir)
+>>>>>>> 59af3596a4a4ff6901987f1b9f17f609dc6e4a75
                 plt.savefig(os.path.join(savedir, f"viz-{t:05d}.jpg"))
                 t += 1
 
@@ -139,8 +146,14 @@ if __name__ == '__main__':
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')))
 
     import lib.toy_data as toy_data
+<<<<<<< HEAD
 
     from train_misc import count_parameters
+=======
+    import lib.utils as utils
+
+    from train_misc import standard_normal_logprob, count_parameters
+>>>>>>> 59af3596a4a4ff6901987f1b9f17f609dc6e4a75
     from train_misc import set_cnf_options, add_spectral_norm, create_regularization_fns
     from train_misc import build_model_toy2d
 
