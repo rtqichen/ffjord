@@ -296,7 +296,7 @@ if __name__ == "__main__":
 
     # restore parameters
     if args.resume is not None:
-        checkpt = torch.load(args.resume)
+        checkpt = torch.load(args.resume, map_location=lambda storage, loc: storage)
         model.load_state_dict(checkpt["state_dict"])
         if "optim_state_dict" in checkpt.keys():
             optimizer.load_state_dict(checkpt["optim_state_dict"])
