@@ -132,3 +132,44 @@ def get_regularization(model, regularization_coeffs):
         if isinstance(module, layers.CNF):
             acc_reg_states = tuple(acc + reg for acc, reg in zip(acc_reg_states, module.get_regularization_states()))
     return acc_reg_states
+
+
+def build_model_toy2d(args, regularization_fns):
+
+    hidden_dims = tuple(map(int, args.dims.split("-")))
+
+    def build_cnf():
+        diffeq = layers.ODEnet(
+            hidden_dims=hidden_dims,
+            input_shape=(2,),
+            strides=None,
+            conv=False,
+            layer_type=args.layer_type,
+            nonlinearity=args.nonlinearity,
+        )
+        odefunc = layers.ODEfunc(
+            diffeq=diffeq,
+            divergence_fn=args.divergence_fn,
+            residual=args.residual,
+            rademacher=args.rademacher,
+        )
+        cnf = layers.CNF(
+            odefunc=odefunc,
+            T=args.time_length,
+            train_T=args.train_T,
+            regularization_fns=regularization_fns,
+            solver=args.solver,
+        )
+        return cnf
+
+    chain = [build_cnf() for _ in range(args.num_blocks)]
+    if args.batch_norm:
+        bn_layers = [layers.MovingBatchNorm1d(2, bn_lag=args.bn_lag) for _ in range(args.num_blocks)]
+        bn_chain = []
+        for a, b in zip(chain, bn_layers):
+            bn_chain.append(a)
+            bn_chain.append(b)
+        chain = bn_chain
+    model = layers.SequentialFlow(chain)
+
+    return model

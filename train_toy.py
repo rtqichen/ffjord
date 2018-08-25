@@ -9,7 +9,6 @@ import time
 import torch
 import torch.optim as optim
 
-import lib.layers as layers
 import lib.toy_data as toy_data
 import lib.utils as utils
 from lib.visualize_flow import visualize_transform
@@ -18,6 +17,7 @@ from train_misc import standard_normal_logprob
 from train_misc import set_cnf_options, count_nfe, count_parameters
 from train_misc import add_spectral_norm, spectral_norm_power_iteration
 from train_misc import create_regularization_fns, get_regularization, append_regularization_to_log
+from train_misc import build_model_toy2d
 
 SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
@@ -83,47 +83,6 @@ logger.info(args)
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
 
 
-def build_model(args, regularization_fns):
-
-    hidden_dims = tuple(map(int, args.dims.split("-")))
-
-    def build_cnf():
-        diffeq = layers.ODEnet(
-            hidden_dims=hidden_dims,
-            input_shape=(2,),
-            strides=None,
-            conv=False,
-            layer_type=args.layer_type,
-            nonlinearity=args.nonlinearity,
-        )
-        odefunc = layers.ODEfunc(
-            diffeq=diffeq,
-            divergence_fn=args.divergence_fn,
-            residual=args.residual,
-            rademacher=args.rademacher,
-        )
-        cnf = layers.CNF(
-            odefunc=odefunc,
-            T=args.time_length,
-            train_T=args.train_T,
-            regularization_fns=regularization_fns,
-            solver=args.solver,
-        )
-        return cnf
-
-    chain = [build_cnf() for _ in range(args.num_blocks)]
-    if args.batch_norm:
-        bn_layers = [layers.MovingBatchNorm1d(2, bn_lag=args.bn_lag) for _ in range(args.num_blocks)]
-        bn_chain = []
-        for a, b in zip(chain, bn_layers):
-            bn_chain.append(a)
-            bn_chain.append(b)
-        chain = bn_chain
-    model = layers.SequentialFlow(chain)
-
-    return model
-
-
 def get_transforms(model):
     def sample_fn(z, logpz=None):
         if logpz is not None:
@@ -162,7 +121,7 @@ def compute_loss(args, model, batch_size=None):
 if __name__ == '__main__':
 
     regularization_fns, regularization_coeffs = create_regularization_fns(args)
-    model = build_model(args, regularization_fns).to(device)
+    model = build_model_toy2d(args, regularization_fns).to(device)
     if args.spectral_norm: add_spectral_norm(model)
     set_cnf_options(args, model)
 
