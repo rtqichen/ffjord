@@ -11,11 +11,14 @@ import torchvision.datasets as dset
 import torchvision.transforms as tforms
 from torchvision.utils import save_image
 
-import lib.spectral_norm as spectral_norm
 import lib.layers as layers
-import lib.layers.wrappers.cnf_regularization as reg_lib
 import lib.utils as utils
 import lib.odenvp as odenvp
+
+from train_misc import standard_normal_logprob
+from train_misc import set_cnf_options, count_nfe, count_parameters, count_total_time
+from train_misc import add_spectral_norm, spectral_norm_power_iteration
+from train_misc import create_regularization_fns, get_regularization, append_regularization_to_log
 
 # go fast boi!!
 torch.backends.cudnn.benchmark = True
@@ -29,7 +32,7 @@ parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked
 parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
 parser.add_argument(
     "--layer_type", type=str, default="ignore",
-    choices=["ignore", "concat", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
+    choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
 )
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument(
@@ -110,11 +113,6 @@ def add_noise(x):
         x = x * 255 + noise
         x = x / 256
     return x
-
-
-def standard_normal_logprob(z):
-    logZ = -0.5 * math.log(2 * math.pi)
-    return logZ - z.pow(2) / 2
 
 
 def update_lr(optimizer, itr):
@@ -204,130 +202,6 @@ def compute_bits_per_dim(x, model):
     return bits_per_dim
 
 
-def count_nfe(model):
-    class Accumulator(object):
-        def __init__(self):
-            self.num_evals = 0
-
-        def __call__(self, module):
-            if isinstance(module, layers.CNF):
-                self.num_evals += module.num_evals()
-
-    accumulator = Accumulator()
-    model.apply(accumulator)
-    return accumulator.num_evals
-
-
-def count_parameters(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-
-def get_total_time(model):
-    class Accumulator(object):
-        def __init__(self):
-            self.total_time = 0
-
-        def __call__(self, module):
-            if isinstance(module, layers.CNF):
-                self.total_time = self.total_time + module.sqrt_end_time * module.sqrt_end_time
-
-    accumulator = Accumulator()
-    model.apply(accumulator)
-    return accumulator.total_time
-
-
-REGULARIZATION_FNS = {
-    "l1int": reg_lib.l1_regularzation_fn,
-    "l2int": reg_lib.l2_regularzation_fn,
-    "dl2int": reg_lib.directional_l2_regularization_fn,
-    "JFrobint": reg_lib.jacobian_frobenius_regularization_fn,
-    "JdiagFrobint": reg_lib.jacobian_diag_frobenius_regularization_fn,
-    "JoffdiagFrobint": reg_lib.jacobian_offdiag_frobenius_regularization_fn,
-}
-
-INV_REGULARIZATION_FNS = {v: k for k, v in six.iteritems(REGULARIZATION_FNS)}
-
-
-def append_regularization_to_log(log_message, regularization_fns, reg_states):
-    for i, reg_fn in enumerate(regularization_fns):
-        log_message = log_message + " | " + INV_REGULARIZATION_FNS[reg_fn] + ": {:.8f}".format(reg_states[i].item())
-    return log_message
-
-
-def create_regularization_fns():
-    regularization_fns = []
-    regularization_coeffs = []
-
-    for arg_key, reg_fn in six.iteritems(REGULARIZATION_FNS):
-        if eval("args." + arg_key) is not None:
-            regularization_fns.append(reg_fn)
-            regularization_coeffs.append(eval("args." + arg_key))
-
-    regularization_fns = tuple(regularization_fns)
-    regularization_coeffs = tuple(regularization_coeffs)
-    return regularization_fns, regularization_coeffs
-
-
-def get_regularization(model, regularization_coeffs):
-    if len(regularization_coeffs) == 0:
-        return ()
-
-    acc_reg_states = tuple([0.] * len(regularization_coeffs))
-    for module in model.modules():
-        if isinstance(module, layers.CNF):
-            acc_reg_states = tuple(acc + reg for acc, reg in zip(acc_reg_states, module.get_regularization_states()))
-    return acc_reg_states
-
-
-def add_spectral_norm(model):
-    """Applies spectral norm to all modules within the scope of a CNF."""
-
-    def apply_spectral_norm(module):
-        # Don't apply spectral norm to hypernets.
-        if 'weight' in module._parameters and not (isinstance(module, torch.nn.Linear) and module.in_features == 1):
-            logger.info("Adding spectral norm to {}".format(module))
-            spectral_norm.inplace_spectral_norm(module, 'weight')
-
-    def find_cnf(module):
-        if isinstance(module, layers.CNF):
-            module.apply(apply_spectral_norm)
-        else:
-            for child in module.children():
-                find_cnf(child)
-
-    find_cnf(model)
-
-
-def spectral_norm_power_iteration(model, n_power_iterations=1):
-    def recursive_power_iteration(module):
-        if hasattr(module, spectral_norm.POWER_ITERATION_FN):
-            getattr(module, spectral_norm.POWER_ITERATION_FN)(n_power_iterations)
-
-    model.apply(recursive_power_iteration)
-
-
-def set_cnf_options(model):
-    def _set(module):
-        if isinstance(module, layers.CNF):
-            # Set training settings
-            module.solver = args.solver
-            module.atol = args.atol
-            module.rtol = args.rtol
-            if args.step_size is not None:
-                module.solver_options['step_size'] = args.step_size
-
-            # Set the test settings
-            module.test_solver = args.test_solver if args.test_solver else args.solver
-            module.test_atol = args.test_atol if args.test_atol else args.atol
-            module.test_rtol = args.test_rtol if args.test_rtol else args.rtol
-
-        if isinstance(module, layers.ODEfunc):
-            module.rademacher = args.rademacher
-            module.residual = args.residual
-
-    model.apply(_set)
-
-
 def create_model(args, data_shape, regularization_fns):
     hidden_dims = tuple(map(int, args.dims.split(",")))
     strides = tuple(map(int, args.strides.split(",")))
@@ -337,6 +211,7 @@ def create_model(args, data_shape, regularization_fns):
             (args.batch_size, *data_shape),
             n_blocks=args.num_blocks,
             intermediate_dims=hidden_dims,
+            nonlinearity=args.nonlinearity,
             alpha=args.alpha,
             cnf_kwargs={"T": args.time_length, "train_T": args.train_T, "regularization_fns": regularization_fns},
         )
@@ -409,11 +284,11 @@ if __name__ == "__main__":
     train_set, test_loader, data_shape = get_dataset(args)
 
     # build model
-    regularization_fns, regularization_coeffs = create_regularization_fns()
+    regularization_fns, regularization_coeffs = create_regularization_fns(args)
     model = create_model(args, data_shape, regularization_fns)
 
     if args.spectral_norm: add_spectral_norm(model)
-    set_cnf_options(model)
+    set_cnf_options(args, model)
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
@@ -473,7 +348,7 @@ if __name__ == "__main__":
                     reg_state * coeff for reg_state, coeff in zip(reg_states, regularization_coeffs) if coeff != 0
                 )
                 loss = loss + reg_loss
-            total_time = get_total_time(model)
+            total_time = count_total_time(model)
             loss = loss + total_time * args.time_penalty
 
             loss.backward()
