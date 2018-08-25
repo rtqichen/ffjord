@@ -37,12 +37,15 @@ def _line_to_dict(line):
     return quants
 
 
-def plot_pairplot(csv_filename, fig_filename):
+def plot_pairplot(csv_filename, fig_filename, top=None):
     import seaborn as sns
     import pandas as pd
 
     sns.set(style="ticks", color_codes=True)
     quants = pd.read_csv(csv_filename)
+    if top is not None:
+        quants = quants[:top]
+
     g = sns.pairplot(quants, kind='reg', diag_kind='kde', markers='.')
     g.savefig(fig_filename)
 
@@ -52,9 +55,10 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--log', type=str, required=True)
+    parser.add_argument('--top_iters', type=int, default=None)
     args = parser.parse_args()
 
     print('Parsing log into csv.')
     log_to_csv(args.log, args.log + '.csv')
     print('Creating correlation plot.')
-    plot_pairplot(args.log + '.csv', os.path.join(os.path.dirname(args.log), 'quants.png'))
+    plot_pairplot(args.log + '.csv', os.path.join(os.path.dirname(args.log), 'quants.png'), args.top_iters)
