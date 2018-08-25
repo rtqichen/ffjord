@@ -284,9 +284,9 @@ if __name__ == '__main__':
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-    time_meter = utils.RunningAverageMeter(0.97)
-    loss_meter = utils.RunningAverageMeter(0.97)
-    nfe_meter = utils.RunningAverageMeter(0.97)
+    time_meter = utils.RunningAverageMeter(0.93)
+    loss_meter = utils.RunningAverageMeter(0.93)
+    nfe_meter = utils.RunningAverageMeter(0.93)
     end = time.time()
     best_loss = float('inf')
     model.train()
