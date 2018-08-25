@@ -54,22 +54,8 @@ class CNF(nn.Module):
                 self.odefunc,
                 (z, _logpz) + reg_states,
                 integration_times.to(z),
-                atol=self.atol,
-                rtol=self.rtol,
-                method=self.solver,
-                options=self.solver_options,
-            )
-
-            if len(integration_times) == 2:
-                state_t = tuple(s[1] for s in state_t)
-            self.regularization_states = state_t[2:]
-
-            state_t = odeint(
-                self.odefunc,
-                (z, _logpz),
-                integration_times.to(z),
-                atol=self.atol,
-                rtol=self.rtol,
+                atol=[self.atol, self.atol] + [1e20] * len(reg_states) if self.solver == 'dopri5' else self.atol,
+                rtol=[self.rtol, self.rtol] + [1e20] * len(reg_states) if self.solver == 'dopri5' else self.rtol,
                 method=self.solver,
                 options=self.solver_options,
             )
@@ -87,6 +73,7 @@ class CNF(nn.Module):
             state_t = tuple(s[1] for s in state_t)
 
         z_t, logpz_t = state_t[:2]
+        self.regularization_states = state_t[2:]
 
         if logpz is not None:
             return z_t, logpz_t
