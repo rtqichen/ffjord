@@ -14,10 +14,12 @@ import lib.utils as utils
 from lib.visualize_flow import visualize_transform
 
 from train_misc import standard_normal_logprob
-from train_misc import set_cnf_options, count_nfe, count_parameters
+from train_misc import set_cnf_options, count_nfe, count_parameters, count_total_time
 from train_misc import add_spectral_norm, spectral_norm_power_iteration
 from train_misc import create_regularization_fns, get_regularization, append_regularization_to_log
 from train_misc import build_model_toy2d
+
+from diagnostics.viz_toy import save_trajectory, trajectory_to_video
 
 SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
@@ -133,6 +135,8 @@ if __name__ == '__main__':
     time_meter = utils.RunningAverageMeter(0.93)
     loss_meter = utils.RunningAverageMeter(0.93)
     nfe_meter = utils.RunningAverageMeter(0.93)
+    tt_meter = utils.RunningAverageMeter(0.93)
+
     end = time.time()
     best_loss = float('inf')
     model.train()
@@ -150,15 +154,20 @@ if __name__ == '__main__':
             )
             loss = loss + reg_loss
 
+        total_time = count_total_time(model)
+
         loss.backward()
         optimizer.step()
 
         time_meter.update(time.time() - end)
         nfe_meter.update(count_nfe(model))
+        tt_meter.update(total_time)
 
         log_message = (
-            'Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | NFE {:.0f}({:.1f})'.format(
-                itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, nfe_meter.val, nfe_meter.avg
+            'Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | NFE {:.0f}({:.1f}) | CNF Time {:.4f}({:.4f})'.
+            format(
+                itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, nfe_meter.val, nfe_meter.avg,
+                tt_meter.val, tt_meter.avg
             )
         )
         if len(regularization_coeffs) > 0:
@@ -166,7 +175,7 @@ if __name__ == '__main__':
 
         logger.info(log_message)
 
-        if itr % args.val_freq == 0:
+        if itr % args.val_freq == 0 or itr == args.niters:
             with torch.no_grad():
                 model.eval()
                 test_loss = compute_loss(args, model, batch_size=args.test_batch_size)
@@ -202,3 +211,11 @@ if __name__ == '__main__':
                 model.train()
 
         end = time.time()
+
+    logger.info('Training has finished.')
+
+    save_traj_dir = os.path.join(args.save, 'trajectory')
+    logger.info('Plotting trajectory to {}'.format(save_traj_dir))
+    data_samples = toy_data.inf_train_gen(args.data, batch_size=2000)
+    save_trajectory(model, data_samples, save_traj_dir, device=device)
+    trajectory_to_video(save_traj_dir)
