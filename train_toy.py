@@ -19,6 +19,8 @@ from train_misc import add_spectral_norm, spectral_norm_power_iteration
 from train_misc import create_regularization_fns, get_regularization, append_regularization_to_log
 from train_misc import build_model_toy2d
 
+from diagnostic.viz_toy import save_trajectory, trajectory_to_video
+
 SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
 parser.add_argument(
@@ -202,3 +204,11 @@ if __name__ == '__main__':
                 model.train()
 
         end = time.time()
+
+    logger.info('Training has finished.')
+
+    save_traj_dir = os.path.join(args.save, 'trajectory')
+    logger.info('Plotting trajectory to {}'.format(save_traj_dir))
+    data_samples = toy_data.inf_train_gen(args.data, batch_size=2000)
+    save_trajectory(model, data_samples, save_traj_dir, device=device)
+    trajectory_to_video(save_traj_dir)
