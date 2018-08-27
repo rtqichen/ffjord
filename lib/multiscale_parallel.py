@@ -46,16 +46,15 @@ class MultiscaleParallelCNF(nn.Module):
     def _build_net(self, input_size):
         _, c, h, w = input_size
         transforms = []
-        for i in range(self.n_blocks):
-            transforms.append(
-                ParallelCNFLayers(
-                    initial_size=(c, h, w),
-                    idims=self.intermediate_dims,
-                    init_layer=(layers.LogitTransform(self.alpha) if self.alpha > 0 else layers.ZeroMeanTransform()) if i == 0 else None,
-                    n_blocks=self.n_blocks,
-                    time_length=self.time_length
-                )
+        transforms.append(
+            ParallelCNFLayers(
+                initial_size=(c, h, w),
+                idims=self.intermediate_dims,
+                init_layer=(layers.LogitTransform(self.alpha) if self.alpha > 0 else layers.ZeroMeanTransform()),
+                n_blocks=self.n_blocks,
+                time_length=self.time_length
             )
+        )
         return nn.ModuleList(transforms)
 
     def get_regularization(self):
