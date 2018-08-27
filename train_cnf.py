@@ -37,7 +37,6 @@ parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
 parser.add_argument('--atol', type=float, default=1e-5)
 parser.add_argument('--rtol', type=float, default=1e-5)
 parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
-parser.add_argument("--step_size_max", type=float, default=None, help="Optional fixed step size.")
 
 parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
 parser.add_argument('--test_atol', type=float, default=None)
@@ -293,13 +292,6 @@ def set_cnf_options(model):
 
     model.apply(_set)
 
-def set_step_size(model, step_size):
-    def _set(module):
-        if isinstance(module, layers.CNF):
-            if args.step_size is not None:
-                module.solver_options['step_size'] = step_size
-    model.apply(_set)
-
 
 def create_model(args, data_shape, regularization_fns):
     hidden_dims = tuple(map(int, args.dims.split(",")))
@@ -442,9 +434,6 @@ if __name__ == "__main__":
 
             # cast data and move to device
             x = cvt(x)
-            if args.step_size_max is not None:
-                new_step = np.random.uniform(args.step_size, args.step_size_max)
-                set_step_size(model, new_step)
             # compute loss
             bits_per_dim, regularization = compute_bits_per_dim(x, model, regularization_coeffs)
             (bits_per_dim + regularization).backward()
