@@ -69,6 +69,7 @@ parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t |
 parser.add_argument('--save', type=str, default='experiments/cnf')
 parser.add_argument('--viz_freq', type=int, default=100)
 parser.add_argument('--val_freq', type=int, default=100)
+parser.add_argument('--log_freq', type=int, default=10)
 parser.add_argument('--gpu', type=int, default=0)
 args = parser.parse_args()
 

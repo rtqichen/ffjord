@@ -12,6 +12,7 @@ from torchvision.utils import save_image
 import lib.layers as layers
 import lib.utils as utils
 import lib.odenvp as odenvp
+import lib.multiscale_parallel as multiscale_parallel
 
 from train_misc import standard_normal_logprob
 from train_misc import set_cnf_options, count_nfe, count_parameters, count_total_time
@@ -68,6 +69,8 @@ parser.add_argument('--autoencode', type=eval, default=False, choices=[True, Fal
 parser.add_argument('--rademacher', type=eval, default=True, choices=[True, False])
 parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
 parser.add_argument('--multiscale', type=eval, default=False, choices=[True, False])
+parser.add_argument('--parallel', type=eval, default=False, choices=[True, False])
+
 
 # Regularizations
 parser.add_argument('--l1int', type=float, default=None, help="int_t ||f||_1")
@@ -213,6 +216,14 @@ def create_model(args, data_shape, regularization_fns):
             alpha=args.alpha,
             cnf_kwargs={"T": args.time_length, "train_T": args.train_T, "regularization_fns": regularization_fns},
         )
+    elif args.parallel:
+        model = multiscale_parallel.MultiscaleParallelCNF(
+            (args.batch_size, *data_shape),
+            n_blocks=args.num_blocks,
+            intermediate_dims=hidden_dims,
+            alpha=args.alpha,
+            time_length=args.time_length
+        )
     else:
         if args.autoencode:
 
@@ -337,7 +348,6 @@ if __name__ == "__main__":
 
             # cast data and move to device
             x = cvt(x)
-
             # compute loss
             loss = compute_bits_per_dim(x, model)
             if regularization_coeffs:

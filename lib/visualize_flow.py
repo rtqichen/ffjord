@@ -52,7 +52,7 @@ def plt_flow(prior_logdensity, transform, ax, npts=100, title="$q(x)$", device="
     ax.set_xlim(LOW, HIGH)
     ax.set_ylim(LOW, HIGH)
     cmap = matplotlib.cm.get_cmap(None)
-    ax.set_axis_bgcolor(cmap(0.))
+    ax.set_facecolor(cmap(0.))
     ax.invert_yaxis()
     ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])
