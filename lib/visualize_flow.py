@@ -52,7 +52,7 @@ def plt_flow(prior_logdensity, transform, ax, low=LOW, high=HIGH, npts=200, titl
     ax.set_xlim(LOW, HIGH)
     ax.set_ylim(-4, 4)
     cmap = matplotlib.cm.get_cmap(None)
-    ax.set_axis_bgcolor(cmap(0.))
+    ax.set_facecolor(cmap(0.))
     ax.invert_yaxis()
     ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])

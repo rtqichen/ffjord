@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 from . import diffeq_layers
 from .diffeq_layers import diffeq_wrapper
+from .squeeze import squeeze, unsqueeze
 
 __all__ = ["ODEnet", "AutoencoderDiffEqNet", "ODEfunc", "AutoencoderODEfunc"]
 
@@ -37,10 +38,11 @@ class ODEnet(nn.Module):
     Helper class to make neural nets for use in continuous normalizing flows
     """
 
-    def __init__(self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus"):
+    def __init__(self, hidden_dims, input_shape, strides, conv,
+                 layer_type="concat", nonlinearity="softplus", num_squeeze=0):
         super(ODEnet, self).__init__()
-
         self.nonlinearity = {"tanh": F.tanh, "relu": F.relu, "softplus": F.softplus, "elu": F.elu}[nonlinearity]
+        self.num_squeeze = num_squeeze
         if conv:
             assert len(strides) == len(hidden_dims) + 1
             base_layer = {
@@ -94,11 +96,17 @@ class ODEnet(nn.Module):
 
     def forward(self, t, y):
         dx = y
+        # squeeze
+        for _ in range(self.num_squeeze):
+            dx = squeeze(dx, 2)
         for l, layer in enumerate(self.layers):
             dx = layer(t, dx)
             # if not last layer, use nonlinearity
             if l < len(self.layers) - 1:
                 dx = self.nonlinearity(dx)
+        # unsqueeze
+        for _ in range(self.num_squeeze):
+            dx = unsqueeze(dx, 2)
         return dx
 
 

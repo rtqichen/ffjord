@@ -15,6 +15,7 @@ import lib.layers as layers
 import lib.layers.wrappers.cnf_regularization as reg_lib
 import lib.utils as utils
 import lib.odenvp as odenvp
+import lib.multiscale_parallel as multiscale_parallel
 
 # go fast boi!!
 torch.backends.cudnn.benchmark = True
@@ -36,6 +37,7 @@ parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
 parser.add_argument('--atol', type=float, default=1e-5)
 parser.add_argument('--rtol', type=float, default=1e-5)
 parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
+parser.add_argument("--step_size_max", type=float, default=None, help="Optional fixed step size.")
 
 parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
 parser.add_argument('--test_atol', type=float, default=None)
@@ -50,7 +52,7 @@ parser.add_argument("--batch_size", type=int, default=200)
 parser.add_argument(
     "--batch_size_schedule", type=str, default="", help="Increases the batchsize at every given epoch, dash separated."
 )
-parser.add_argument("--test_batch_size", type=int, default=2000)
+parser.add_argument("--test_batch_size", type=int, default=200)
 parser.add_argument("--lr", type=float, default=1e-3)
 parser.add_argument("--warmup_iters", type=float, default=1000)
 parser.add_argument("--weight_decay", type=float, default=0.0)
@@ -62,6 +64,8 @@ parser.add_argument('--autoencode', type=eval, default=False, choices=[True, Fal
 parser.add_argument('--rademacher', type=eval, default=True, choices=[True, False])
 parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
 parser.add_argument('--multiscale', type=eval, default=False, choices=[True, False])
+parser.add_argument('--parallel', type=eval, default=False, choices=[True, False])
+
 
 # Regularizations
 parser.add_argument("--l2_coeff", type=float, default=0, help="L2 on dynamics.")
@@ -289,6 +293,13 @@ def set_cnf_options(model):
 
     model.apply(_set)
 
+def set_step_size(model, step_size):
+    def _set(module):
+        if isinstance(module, layers.CNF):
+            if args.step_size is not None:
+                module.solver_options['step_size'] = step_size
+    model.apply(_set)
+
 
 def create_model(args, data_shape, regularization_fns):
     hidden_dims = tuple(map(int, args.dims.split(",")))
@@ -301,6 +312,14 @@ def create_model(args, data_shape, regularization_fns):
             intermediate_dims=hidden_dims,
             alpha=args.alpha,
             time_length=args.time_length,
+        )
+    elif args.parallel:
+        model = multiscale_parallel.MultiscaleParallelCNF(
+            (args.batch_size, *data_shape),
+            n_blocks=args.num_blocks,
+            intermediate_dims=hidden_dims,
+            alpha=args.alpha,
+            time_length=args.time_length
         )
     else:
         if args.autoencode:
@@ -423,7 +442,9 @@ if __name__ == "__main__":
 
             # cast data and move to device
             x = cvt(x)
-
+            if args.step_size_max is not None:
+                new_step = np.random.uniform(args.step_size, args.step_size_max)
+                set_step_size(model, new_step)
             # compute loss
             bits_per_dim, regularization = compute_bits_per_dim(x, model, regularization_coeffs)
             (bits_per_dim + regularization).backward()

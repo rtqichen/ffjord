@@ -53,6 +53,7 @@ parser.add_argument('--weight_decay', type=float, default=0)
 parser.add_argument('--save', type=str, default='experiments/cnf')
 parser.add_argument('--viz_freq', type=int, default=100)
 parser.add_argument('--val_freq', type=int, default=100)
+parser.add_argument('--log_freq', type=int, default=10)
 parser.add_argument('--gpu', type=int, default=0)
 args = parser.parse_args()
 
@@ -220,11 +221,12 @@ if __name__ == '__main__':
         time_meter.update(time.time() - end)
         loss_meter.update(loss.item())
         nfe_meter.update(count_nfe(model))
-
-        logger.info(
-            'Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | NFE {:.0f}({:.1f})'.
-            format(itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, nfe_meter.val, nfe_meter.avg)
-        )
+        if itr % args.log_freq == 0:
+            logger.info(
+                'Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | NFE {:.0f}({:.1f})'.
+                format(itr, time_meter.val, time_meter.avg,
+                       loss_meter.val, loss_meter.avg, nfe_meter.val, nfe_meter.avg)
+            )
 
         if itr % args.val_freq == 0:
             with torch.no_grad():
