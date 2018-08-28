@@ -21,7 +21,7 @@ from train_misc import build_model_toy2d
 
 from diagnostics.viz_toy import save_trajectory, trajectory_to_video
 
-SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
+SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
 parser.add_argument(
     '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons'], type=str, default='pinwheel'

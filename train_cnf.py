@@ -295,7 +295,7 @@ if __name__ == "__main__":
     regularization_fns, regularization_coeffs = create_regularization_fns(args)
     model = create_model(args, data_shape, regularization_fns)
 
-    if args.spectral_norm: add_spectral_norm(model)
+    if args.spectral_norm: add_spectral_norm(model, logger)
     set_cnf_options(args, model)
 
     logger.info(model)
@@ -338,8 +338,6 @@ if __name__ == "__main__":
         for _, (x, y) in enumerate(train_loader):
             start = time.time()
             update_lr(optimizer, itr)
-            if args.spectral_norm: spectral_norm_power_iteration(model, args.spectral_norm_niter)
-
             optimizer.zero_grad()
 
             if not args.conv:
@@ -362,6 +360,8 @@ if __name__ == "__main__":
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
             optimizer.step()
+
+            if args.spectral_norm: spectral_norm_power_iteration(model, args.spectral_norm_niter)
 
             time_meter.update(time.time() - start)
             loss_meter.update(loss.item())

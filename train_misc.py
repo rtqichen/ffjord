@@ -21,6 +21,10 @@ def set_cnf_options(args, model):
             if args.step_size is not None:
                 module.solver_options['step_size'] = args.step_size
 
+            # If using fixed-grid adams, restrict order to not be too high.
+            if 'adams' in args.solver:
+                module.solver_options['max_order'] = 4
+
             # Set the test settings
             module.test_solver = args.test_solver if args.test_solver else args.solver
             module.test_atol = args.test_atol if args.test_atol else args.atol
@@ -65,12 +69,12 @@ def count_total_time(model):
     return accumulator.total_time
 
 
-def add_spectral_norm(model):
+def add_spectral_norm(model, logger=None):
     """Applies spectral norm to all modules within the scope of a CNF."""
 
     def apply_spectral_norm(module):
         if 'weight' in module._parameters:
-            print("Adding spectral norm to {}".format(module))
+            if logger: logger.info("Adding spectral norm to {}".format(module))
             spectral_norm.inplace_spectral_norm(module, 'weight')
 
     def find_cnf(module):
