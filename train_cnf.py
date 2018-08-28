@@ -116,7 +116,7 @@ def add_noise(x):
 
 
 def update_lr(optimizer, itr):
-    iter_frac = min(float(itr + 1) / args.warmup_iters, 1.0)
+    iter_frac = min(float(itr + 1) / max(args.warmup_iters, 1), 1.0)
     lr = args.lr * iter_frac
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
