@@ -119,13 +119,7 @@ class ParallelSumModules(nn.Module):
         self.cpu = not torch.cuda.is_available()
 
     def forward(self, t, y):
-        # out = []
-        # for model in self.models:
-        #     this_out = model(t, y)
-        #     out.append(this_out)
-        # out = sum(out)
-        devices = [-1 for _ in self.models] if self.cpu else None
-        out = sum(nn.parallel.parallel_apply(self.models, [(t, y) for _ in self.models], devices=devices))
+        out = sum(model(t, y) for model in self.models)
         return out
 
 
