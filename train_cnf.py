@@ -71,7 +71,6 @@ parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, 
 parser.add_argument('--multiscale', type=eval, default=False, choices=[True, False])
 parser.add_argument('--parallel', type=eval, default=False, choices=[True, False])
 
-
 # Regularizations
 parser.add_argument('--l1int', type=float, default=None, help="int_t ||f||_1")
 parser.add_argument('--l2int', type=float, default=None, help="int_t ||f||_2")
@@ -222,7 +221,7 @@ def create_model(args, data_shape, regularization_fns):
             n_blocks=args.num_blocks,
             intermediate_dims=hidden_dims,
             alpha=args.alpha,
-            time_length=args.time_length
+            time_length=args.time_length,
         )
     else:
         if args.autoencode:

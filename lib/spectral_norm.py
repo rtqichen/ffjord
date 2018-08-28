@@ -59,8 +59,9 @@ class SpectralNorm(object):
 
     def __call__(self, module, unused_inputs):
         del unused_inputs
-        if not hasattr(module, self.name):
-            self.compute_weight(module)
+        self.compute_weight(module, n_power_iterations=0)
+
+        # requires_grad might be either True or False during inference.
         if not module.training:
             r_g = getattr(module, self.name + '_orig').requires_grad
             setattr(module, self.name, getattr(module, self.name).detach().requires_grad_(r_g))
