@@ -89,6 +89,7 @@ class ODEnet(nn.Module):
             if stride is None:
                 layer_kwargs = {}
             elif stride == 1:
+                #layer_kwargs = {"ksize": 1 if i == 1 else 3, "stride": 1, "padding": 0 if i  == 0 else 1, "transpose": False}
                 layer_kwargs = {"ksize": 3, "stride": 1, "padding": 1, "transpose": False}
             elif stride == 2:
                 layer_kwargs = {"ksize": 4, "stride": 2, "padding": 1, "transpose": False}

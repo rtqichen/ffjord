@@ -20,7 +20,7 @@ from train_misc import add_spectral_norm, spectral_norm_power_iteration
 from train_misc import create_regularization_fns, get_regularization, append_regularization_to_log
 
 # go fast boi!!
-torch.backends.cudnn.benchmark = True
+#torch.backends.cudnn.benchmark = True
 SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
 parser = argparse.ArgumentParser("Continuous Normalizing Flow")
 parser.add_argument("--data", choices=["mnist", "svhn", "cifar10"], type=str, default="mnist")
@@ -41,6 +41,7 @@ parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
 parser.add_argument('--atol', type=float, default=1e-5)
 parser.add_argument('--rtol', type=float, default=1e-5)
 parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
+parser.add_argument("--num_steps", type=int, default=None, help="number of steps for random step size solvers.")
 
 parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
 parser.add_argument('--test_atol', type=float, default=None)
@@ -49,7 +50,7 @@ parser.add_argument('--test_rtol', type=float, default=None)
 parser.add_argument("--imagesize", type=int, default=None)
 parser.add_argument("--alpha", type=float, default=1e-6)
 parser.add_argument('--time_length', type=float, default=1.0)
-parser.add_argument('--train_T', type=eval, default=True)
+parser.add_argument('--train_T', type=eval, default=False)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
 parser.add_argument("--batch_size", type=int, default=200)
@@ -63,6 +64,7 @@ parser.add_argument("--weight_decay", type=float, default=0.0)
 parser.add_argument("--spectral_norm_niter", type=int, default=10)
 
 parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
+parser.add_argument("--adjoint", type=eval, default=True, choices=[True, False])
 parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
 parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
 parser.add_argument('--autoencode', type=eval, default=False, choices=[True, False])
@@ -213,7 +215,8 @@ def create_model(args, data_shape, regularization_fns):
             intermediate_dims=hidden_dims,
             nonlinearity=args.nonlinearity,
             alpha=args.alpha,
-            cnf_kwargs={"T": args.time_length, "train_T": args.train_T, "regularization_fns": regularization_fns},
+            cnf_kwargs={"T": args.time_length, "train_T": args.train_T,
+                        "regularization_fns": regularization_fns, "adjoint": args.adjoint},
         )
     elif args.parallel:
         model = multiscale_parallel.MultiscaleParallelCNF(
@@ -222,6 +225,7 @@ def create_model(args, data_shape, regularization_fns):
             intermediate_dims=hidden_dims,
             alpha=args.alpha,
             time_length=args.time_length,
+            adjoint=args.adjoint
         )
     else:
         if args.autoencode:
@@ -246,6 +250,7 @@ def create_model(args, data_shape, regularization_fns):
                     T=args.time_length,
                     regularization_fns=regularization_fns,
                     solver=args.solver,
+                    adjoint=args.adjoint
                 )
                 return cnf
         else:
@@ -271,6 +276,7 @@ def create_model(args, data_shape, regularization_fns):
                     train_T=args.train_T,
                     regularization_fns=regularization_fns,
                     solver=args.solver,
+                    adjoint=args.adjoint
                 )
                 return cnf
 
@@ -306,6 +312,7 @@ if __name__ == "__main__":
 
     # restore parameters
     if args.resume is not None:
+        if args.spectral_norm: spectral_norm_power_iteration(model, 1)
         checkpt = torch.load(args.resume, map_location=lambda storage, loc: storage)
         model.load_state_dict(checkpt["state_dict"])
         if "optim_state_dict" in checkpt.keys():
@@ -359,7 +366,8 @@ if __name__ == "__main__":
             loss = loss + total_time * args.time_penalty
 
             loss.backward()
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+            grad_norm = max(param.grad.abs().max() for param in model.parameters())
+            torch.nn.utils.clip_grad_value_(model.parameters(), args.max_grad_norm)
 
             optimizer.step()
 

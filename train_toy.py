@@ -41,6 +41,7 @@ parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
 parser.add_argument('--atol', type=float, default=1e-5)
 parser.add_argument('--rtol', type=float, default=1e-5)
 parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
+parser.add_argument("--num_steps", type=int, default=None)
 
 parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
 parser.add_argument('--test_atol', type=float, default=None)
@@ -165,10 +166,10 @@ if __name__ == '__main__':
         tt_meter.update(total_time)
 
         log_message = (
-            'Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | NFE {:.0f}({:.1f}) | CNF Time {:.4f}({:.4f})'.
+            'Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | NFE {:.0f}({:.1f}) | CNF Time {:.4f}({:.4f}) | Runtime {:.4f}({:.4f})'.
             format(
                 itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, nfe_meter.val, nfe_meter.avg,
-                tt_meter.val, tt_meter.avg
+                tt_meter.val, tt_meter.avg, time_meter.val, time_meter.avg
             )
         )
         if len(regularization_coeffs) > 0:

@@ -25,7 +25,7 @@ class ODENVP(nn.Module):
         nonlinearity="softplus",
         squash_input=True,
         alpha=0.05,
-        cnf_kwargs=None,
+        cnf_kwargs=None
     ):
         super(ODENVP, self).__init__()
         self.n_scale = min(n_scale, self._calc_n_scale(input_size))

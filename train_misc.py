@@ -21,6 +21,9 @@ def set_cnf_options(args, model):
             if args.step_size is not None:
                 module.solver_options['step_size'] = args.step_size
 
+            if args.num_steps is not None:
+                module.solver_options['num_steps'] = args.num_steps
+
             # Set the test settings
             module.test_solver = args.test_solver if args.test_solver else args.solver
             module.test_atol = args.test_atol if args.test_atol else args.atol

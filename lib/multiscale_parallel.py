@@ -29,6 +29,7 @@ class MultiscaleParallelCNF(nn.Module):
         intermediate_dims=(32,),
         alpha=-1,
         time_length=1.,
+        adjoint=True
     ):
         super(MultiscaleParallelCNF, self).__init__()
         print(input_size)
@@ -37,6 +38,7 @@ class MultiscaleParallelCNF(nn.Module):
         self.intermediate_dims = intermediate_dims
         self.alpha = alpha
         self.time_length = time_length
+        self.adjoint = adjoint
 
         if not self.n_scale > 0:
             raise ValueError('Could not compute number of scales for input of' 'size (%d,%d,%d,%d)' % input_size)
@@ -52,7 +54,8 @@ class MultiscaleParallelCNF(nn.Module):
                 idims=self.intermediate_dims,
                 init_layer=(layers.LogitTransform(self.alpha) if self.alpha > 0 else layers.ZeroMeanTransform()),
                 n_blocks=self.n_blocks,
-                time_length=self.time_length
+                time_length=self.time_length,
+                adjoint=self.adjoint
             )
         )
         return nn.ModuleList(transforms)
@@ -132,6 +135,7 @@ class ParallelCNFLayers(layers.SequentialFlow):
         init_layer=None,
         n_blocks=1,
         time_length=1.,
+        adjoint=True
     ):
         strides = tuple([1] + [1 for _ in idims])
         chain = []
@@ -147,7 +151,7 @@ class ParallelCNFLayers(layers.SequentialFlow):
             f = layers.ODEfunc(net)
             return f
 
-        chain += [layers.CNF(_make_odefunc(), T=time_length) for _ in range(n_blocks)]
+        chain += [layers.CNF(_make_odefunc(), T=time_length, adjoint=adjoint) for _ in range(n_blocks)]
 
         super(ParallelCNFLayers, self).__init__(chain)
 
