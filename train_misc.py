@@ -22,7 +22,7 @@ def set_cnf_options(args, model):
                 module.solver_options['step_size'] = args.step_size
 
             # If using fixed-grid adams, restrict order to not be too high.
-            if 'adams' in args.solver:
+            if args.solver in ['fixed_adams', 'explicit_adams']:
                 module.solver_options['max_order'] = 4
 
             # Set the test settings

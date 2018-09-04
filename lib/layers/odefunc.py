@@ -42,17 +42,34 @@ class Swish(nn.Module):
         return x * torch.sigmoid(self.beta * x)
 
 
+class Lambda(nn.Module):
+    def __init__(self, f):
+        super(Lambda, self).__init__()
+        self.f = f
+
+    def forward(self, x):
+        return self.f(x)
+
+
+NONLINEARITIES = {
+    "tanh": nn.Tanh(),
+    "relu": nn.ReLU(),
+    "softplus": nn.Softplus(),
+    "elu": nn.ELU(),
+    "swish": Swish(),
+    "square": Lambda(lambda x: x**2),
+    "identity": Lambda(lambda x: x),
+}
+
+
 class ODEnet(nn.Module):
     """
     Helper class to make neural nets for use in continuous normalizing flows
     """
 
-    NONLINEARITIES = {
-        "tanh": nn.Tanh(), "relu": nn.ReLU(), "softplus": nn.Softplus(), "elu": nn.ELU(), "swish": Swish()
-    }
-
-    def __init__(self, hidden_dims, input_shape, strides, conv,
-                 layer_type="concat", nonlinearity="softplus", num_squeeze=0):
+    def __init__(
+        self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus", num_squeeze=0
+    ):
         super(ODEnet, self).__init__()
         self.num_squeeze = num_squeeze
         if conv:
@@ -99,7 +116,7 @@ class ODEnet(nn.Module):
 
             layer = base_layer(hidden_shape[0], dim_out, **layer_kwargs)
             layers.append(layer)
-            activation_fns.append(self.NONLINEARITIES[nonlinearity])
+            activation_fns.append(NONLINEARITIES[nonlinearity])
 
             hidden_shape = list(copy.copy(hidden_shape))
             hidden_shape[0] = dim_out
