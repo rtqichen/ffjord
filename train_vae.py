@@ -61,12 +61,6 @@ if args.evaluate:
     assert args.resume is not None, "If you are evaluating, you must give me a checkpoint dummy"
 
 
-def text_to_numpy(fname):
-    print(fname)
-    with open(fname, 'r') as f:
-        return np.array([[int(i) for i in line.split()] for line in f])
-
-
 def binarized_mnist(path="./data/binary_mnist.npz"):
     datasets = np.load(path)
     return datasets["train"], datasets["valid"], datasets["test"]
