@@ -17,14 +17,13 @@ import integrate
 import lib.layers as layers
 import lib.layers.diffeq_layers as diffeq_layers
 from lib.layers.diffeq_layers import GatedConv, GatedConvTranspose, GatedLinear
-import lib.regularizations as regularizations
 import lib.utils as utils
 
 # go fast boi!!
 torch.backends.cudnn.benchmark = True
 
 parser = argparse.ArgumentParser("Continuous Normalizing Flow VAE")
-parser.add_argument("--data", choices=["mnist", "svhn"], type=str, default="mnist")
+parser.add_argument("--data", choices=["mnist", "omniglot_static", "omniglot_dynamic"], type=str, default="omniglot_dynamic")
 parser.add_argument("--dims", type=str, default="256,256")
 parser.add_argument("--hidden_dim", type=int, default=64)
 
@@ -62,10 +61,22 @@ if args.evaluate:
     assert args.resume is not None, "If you are evaluating, you must give me a checkpoint dummy"
 
 
-def binarized_mnist(path="./data/binarized_mnist.npz"):
-    data = np.load(path)
-    rs = lambda x: x.reshape([-1, 1, 28, 28])
-    return rs(data['train_data']), rs(data['valid_data']), rs(data['test_data'])
+def text_to_numpy(fname):
+    print(fname)
+    with open(fname, 'r') as f:
+        return np.array([[int(i) for i in line.split()] for line in f])
+
+
+def binarized_mnist(path="./data/binary_mnist.npz"):
+    datasets = np.load(path)
+    return datasets["train"], datasets["valid"], datasets["test"]
+
+
+def binarize(x):
+    if type(x).__name__ == "ndarray":
+        return (np.random.rand(*x.shape) < x).astype(np.float32)
+    else:
+        return (torch.rand(x.size()) < x).type(torch.float32)
 
 
 def Encoder():
@@ -216,10 +227,25 @@ def standard_normal_logprob(z):
 
 def get_dataset(args):
     if args.data == "mnist":
-        train_set, valid_set, test_set = binarized_mnist()
+        datasets = np.load("./data/binary_mnist.npz")
+        train_set, valid_set, test_set = datasets["train"], datasets["valid"], datasets["test"]
         train_mean = train_set.mean(axis=0)
     else:
-        assert False
+        import scipy.io as sio
+        data = sio.loadmat("/Users/wgrathwohl/openai/cnf/data/omniglot.mat")
+        trainval = np.transpose(data['data']).reshape([-1, 1, 28, 28])
+        test_set = np.transpose(data['testdata']).reshape([-1, 1, 28, 28])
+        if args.data == "omniglot_static":
+            np.random.seed(5)
+            trainval = binarize(trainval)
+            test_set = binarize(test_set)
+
+        permutation = np.random.RandomState(seed=123).permutation(trainval.shape[0])
+        trainval = trainval[permutation]
+        n_val = 1345
+        train_set = trainval[:-n_val]
+        valid_set = trainval[-n_val:]
+        train_mean = train_set.mean(axis=0)
 
     train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     valid_loader = torch.utils.data.DataLoader(dataset=valid_set, batch_size=args.batch_size, shuffle=False)
@@ -228,19 +254,6 @@ def get_dataset(args):
     logger.info("==>>> total validation batch number: {}".format(len(valid_loader)))
     logger.info("==>>> total testing batch number: {}".format(len(test_loader)))
     return train_loader, valid_loader, test_loader, train_mean
-
-
-def regularized_model(model):
-    dict_of_regularizations = {}
-    if args.l2_coeff != 0:
-        dict_of_regularizations[regularizations.L2Regularization] = args.l2_coeff
-    if args.dl2_coeff != 0:
-        dict_of_regularizations[regularizations.DirectionalL2Regularization] = args.dl2_coeff
-
-    for layer in model.chain:
-        if isinstance(layer, layers.CNF):
-            layer.odefunc = regularizations.RegularizationsContainer(layer.odefunc, dict_of_regularizations)
-    return model
 
 
 def get_regularization(model):
@@ -256,7 +269,6 @@ def count_parameters(model):
 
 
 if __name__ == "__main__":
-
     # logger
     utils.makedirs(args.save)
     logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
@@ -264,14 +276,17 @@ if __name__ == "__main__":
 
     # get deivce
     device = torch.device("cuda:" + str(args.gpu) if torch.cuda.is_available() else "cpu")
-    cvt = lambda x: x.type(torch.float32).to(device)
+    # if using dynamically binarized dataset we need to binarize the data
+    if args.data == "omniglot_dynamic":
+        cvt = lambda x: binarize(x.type(torch.float32).to(device))
+    else:
+        cvt = lambda x: x.type(torch.float32).to(device)
 
     # load dataset
     train_loader, valid_loader, test_loader, train_mean = get_dataset(args)
     data_shape = train_mean.shape
 
     hidden_dims = tuple(map(int, args.dims.split(",")))
-
     gfunc = ODEnet(hidden_dims, args.nonlinearity, args.layer_type, args.hidden_dim)
     if args.vanilla_vae:
         flow = None
