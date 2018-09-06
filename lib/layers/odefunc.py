@@ -85,12 +85,12 @@ class ODEnet(nn.Module):
         activation_fns = []
         hidden_shape = input_shape
 
-        for dim_out, stride in zip(hidden_dims + (input_shape[0],), strides):
+        for i, (dim_out, stride) in enumerate(zip(hidden_dims + (input_shape[0],), strides)):
             if stride is None:
                 layer_kwargs = {}
             elif stride == 1:
-                #layer_kwargs = {"ksize": 1 if i == 1 else 3, "stride": 1, "padding": 0 if i  == 0 else 1, "transpose": False}
-                layer_kwargs = {"ksize": 3, "stride": 1, "padding": 1, "transpose": False}
+                layer_kwargs = {"ksize": 1 if i == 1 else 3, "stride": 1, "padding": 0 if i == 0 else 1, "transpose": False}
+                #layer_kwargs = {"ksize": 3, "stride": 1, "padding": 1, "transpose": False}
             elif stride == 2:
                 layer_kwargs = {"ksize": 4, "stride": 2, "padding": 1, "transpose": False}
             elif stride == -2:
