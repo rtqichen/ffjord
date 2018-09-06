@@ -73,7 +73,7 @@ class SpectralNorm(object):
         height = weight.size(dim)
 
         u = normalize(weight.new_empty(height).normal_(0, 1), dim=0, eps=fn.eps)
-        v = normalize(weight.new_empty(weight.numel() / height).normal_(0, 1), dim=0, eps=fn.eps)
+        v = normalize(weight.new_empty(int(weight.numel() / height)).normal_(0, 1), dim=0, eps=fn.eps)
         delattr(module, fn.name)
         module.register_parameter(fn.name + "_orig", weight)
         # We still need to assign weight back as fn.name because all sorts of
