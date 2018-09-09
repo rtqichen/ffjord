@@ -16,12 +16,15 @@ import os
 import datetime
 
 import lib.utils as utils
+import lib.layers.odefunc as odefunc
 
 import vae_lib.models.VAE as VAE
+import vae_lib.models.CNFVAE as CNFVAE
 from vae_lib.optimization.training import train, evaluate
 from vae_lib.utils.load_data import load_dataset
 from vae_lib.utils.plotting import plot_training_curve
 
+SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams']
 parser = argparse.ArgumentParser(description='PyTorch Sylvester Normalizing flows')
 
 parser.add_argument(
@@ -77,7 +80,7 @@ parser.add_argument('--max_beta', type=float, default=1., metavar='MB', help='ma
 parser.add_argument('--min_beta', type=float, default=0.0, metavar='MB', help='min beta for warm-up')
 parser.add_argument(
     '-f', '--flow', type=str, default='no_flow',
-    choices=['planar', 'iaf', 'householder', 'orthogonal', 'triangular',
+    choices=['planar', 'iaf', 'householder', 'orthogonal', 'triangular', 'cnf',
              'no_flow'], help="""Type of flows to use, no flows can also be selected"""
 )
 parser.add_argument(
@@ -101,6 +104,32 @@ parser.add_argument(
 parser.add_argument('--z_size', type=int, default=64, metavar='ZSIZE', help='how many stochastic hidden units')
 # gpu/cpu
 parser.add_argument('--gpu_num', type=int, default=0, metavar='GPU', help='choose GPU to run on.')
+
+# CNF settings
+parser.add_argument(
+    "--layer_type", type=str, default="concatsquash",
+    choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
+)
+parser.add_argument('--dims', type=str, default='1024')
+parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
+parser.add_argument('--time_length', type=float, default=0.5)
+parser.add_argument('--train_T', type=eval, default=False)
+parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
+parser.add_argument("--nonlinearity", type=str, default="softplus", choices=odefunc.NONLINEARITIES)
+
+parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
+parser.add_argument('--atol', type=float, default=1e-5)
+parser.add_argument('--rtol', type=float, default=1e-5)
+parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
+
+parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
+parser.add_argument('--test_atol', type=float, default=None)
+parser.add_argument('--test_rtol', type=float, default=None)
+
+parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
+parser.add_argument('--rademacher', type=eval, default=False, choices=[True, False])
+parser.add_argument('--batch_norm', type=eval, default=False, choices=[True, False])
+parser.add_argument('--bn_lag', type=float, default=0)
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -185,6 +214,8 @@ def run(args, kwargs):
         model = VAE.HouseholderSylvesterVAE(args)
     elif args.flow == 'triangular':
         model = VAE.TriangularSylvesterVAE(args)
+    elif args.flow == 'cnf':
+        model = CNFVAE.CNFVAE(args)
     else:
         raise ValueError('Invalid flow choice')
 
