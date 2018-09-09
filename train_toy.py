@@ -18,7 +18,7 @@ from train_misc import standard_normal_logprob
 from train_misc import set_cnf_options, count_nfe, count_parameters, count_total_time
 from train_misc import add_spectral_norm, spectral_norm_power_iteration
 from train_misc import create_regularization_fns, get_regularization, append_regularization_to_log
-from train_misc import build_model_toy2d
+from train_misc import build_model_tabular
 
 from diagnostics.viz_toy import save_trajectory, trajectory_to_video
 
@@ -125,7 +125,7 @@ def compute_loss(args, model, batch_size=None):
 if __name__ == '__main__':
 
     regularization_fns, regularization_coeffs = create_regularization_fns(args)
-    model = build_model_toy2d(args, regularization_fns).to(device)
+    model = build_model_tabular(args, 2, regularization_fns).to(device)
     if args.spectral_norm: add_spectral_norm(model)
     set_cnf_options(args, model)
 

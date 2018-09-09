@@ -138,14 +138,14 @@ def get_regularization(model, regularization_coeffs):
     return acc_reg_states
 
 
-def build_model_toy2d(args, regularization_fns):
+def build_model_tabular(args, dims, regularization_fns):
 
     hidden_dims = tuple(map(int, args.dims.split("-")))
 
     def build_cnf():
         diffeq = layers.ODEnet(
             hidden_dims=hidden_dims,
-            input_shape=(2,),
+            input_shape=(dims,),
             strides=None,
             conv=False,
             layer_type=args.layer_type,
@@ -168,7 +168,7 @@ def build_model_toy2d(args, regularization_fns):
 
     chain = [build_cnf() for _ in range(args.num_blocks)]
     if args.batch_norm:
-        bn_layers = [layers.MovingBatchNorm1d(2, bn_lag=args.bn_lag) for _ in range(args.num_blocks)]
+        bn_layers = [layers.MovingBatchNorm1d(dims, bn_lag=args.bn_lag) for _ in range(args.num_blocks)]
         bn_chain = []
         for a, b in zip(chain, bn_layers):
             bn_chain.append(a)
