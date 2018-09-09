@@ -88,6 +88,7 @@ device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 
 
 
 def get_transforms(model):
+
     def sample_fn(z, logpz=None):
         if logpz is not None:
             return model(z, logpz, reverse=True)
