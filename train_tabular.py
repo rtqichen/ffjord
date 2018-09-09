@@ -116,6 +116,12 @@ def compute_loss(x, model):
     return loss
 
 
+def restore_model(model, filename):
+    checkpt = torch.load(filename, map_location=lambda storage, loc: storage)
+    model.load_state_dict(checkpt["state_dict"])
+    return model
+
+
 if __name__ == '__main__':
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -201,12 +207,10 @@ if __name__ == '__main__':
         with torch.no_grad():
             val_loss = utils.AverageMeter()
             val_nfe = utils.AverageMeter()
-            for _, x in enumerate(train_loader):
+            for _, x in enumerate(val_loader):
                 x = cvt(x)
                 val_loss.update(compute_loss(x, model).item(), x.shape[0])
                 val_nfe.update(count_nfe(model))
-            log_message = '[VAL] Epoch {:04d} | Val Loss {:.6f} | NFE {:.0f}'.format(epoch, val_loss.avg, val_nfe.avg)
-            logger.info(log_message)
 
             if val_loss.avg < best_loss:
                 best_loss = val_loss.avg
@@ -215,7 +219,25 @@ if __name__ == '__main__':
                     'args': args,
                     'state_dict': model.state_dict(),
                 }, os.path.join(args.save, 'checkpt.pth'))
+                n_iters_without_improvement = 0
+            else:
+                n_iters_without_improvement += 1
+
+            log_message = '[VAL] Epoch {:04d} | Val Loss {:.6f} | NFE {:.0f} | NoImproveEpochs {:02d}/{:02d}'.format(
+                epoch, val_loss.avg, val_nfe.avg, n_iters_without_improvement, args.early_stopping
+            )
+            logger.info(log_message)
 
     logger.info('Training has finished.')
+    model = restore_model(model, os.path.join(args.save, 'checkpt.pth')).to(device)
+    set_cnf_options(args, model)
 
-    # TODO: compute logp on test set.
+    with torch.no_grad():
+        test_loss = utils.AverageMeter()
+        test_nfe = utils.AverageMeter()
+        for _, x in enumerate(test_loader):
+            x = cvt(x)
+            test_loss.update(compute_loss(x, model).item(), x.shape[0])
+            test_nfe.update(count_nfe(model))
+        log_message = '[TEST] Epoch {:04d} | Test Loss {:.6f} | NFE {:.0f}'.format(epoch, test_loss.avg, test_nfe.avg)
+        logger.info(log_message)
