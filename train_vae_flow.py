@@ -107,7 +107,7 @@ parser.add_argument('--gpu_num', type=int, default=0, metavar='GPU', help='choos
 
 # CNF settings
 parser.add_argument(
-    "--layer_type", type=str, default="concatsquash",
+    "--layer_type", type=str, default="concat",
     choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
 )
 parser.add_argument('--dims', type=str, default='1024')
@@ -148,9 +148,6 @@ kwargs = {'num_workers': 0, 'pin_memory': True} if args.cuda else {}
 
 
 def run(args, kwargs):
-
-    print('\nMODEL SETTINGS: \n', args, '\n')
-    print("Random Seed: ", args.manual_seed)
 
     # ==================================================================================================================
     # SNAPSHOTS
@@ -220,10 +217,10 @@ def run(args, kwargs):
         raise ValueError('Invalid flow choice')
 
     if args.cuda:
-        print("Model on GPU")
+        logger.info("Model on GPU")
         model.cuda()
 
-    print(model)
+    logger.info(model)
 
     optimizer = optim.Adamax(model.parameters(), lr=args.learning_rate, eps=1.e-7)
 
@@ -244,10 +241,10 @@ def run(args, kwargs):
     for epoch in range(1, args.epochs + 1):
 
         t_start = time.time()
-        tr_loss = train(epoch, train_loader, model, optimizer, args)
+        tr_loss = train(epoch, train_loader, model, optimizer, args, logger)
         train_loss.append(tr_loss)
         train_times.append(time.time() - t_start)
-        print('One training epoch took %.2f seconds' % (time.time() - t_start))
+        logger.info('One training epoch took %.2f seconds' % (time.time() - t_start))
 
         v_loss, v_bpd = evaluate(val_loader, model, args, epoch=epoch)
 
@@ -259,7 +256,7 @@ def run(args, kwargs):
             best_loss = v_loss
             if args.input_type != 'binary':
                 best_bpd = v_bpd
-            print('->model saved<-')
+            logger.info('->model saved<-')
             torch.save(model, snap_dir + args.flow + '.model')
             # torch.save(model, snap_dir + args.flow + '_' + args.architecture + '.model')
 
@@ -269,10 +266,12 @@ def run(args, kwargs):
                 break
 
         if args.input_type == 'binary':
-            print('--> Early stopping: {}/{} (BEST: loss {:.4f})\n'.format(e, args.early_stopping_epochs, best_loss))
+            logger.info(
+                '--> Early stopping: {}/{} (BEST: loss {:.4f})\n'.format(e, args.early_stopping_epochs, best_loss)
+            )
 
         else:
-            print(
+            logger.info(
                 '--> Early stopping: {}/{} (BEST: loss {:.4f}, bpd {:.4f})\n'.
                 format(e, args.early_stopping_epochs, best_loss, best_bpd)
             )
@@ -289,7 +288,7 @@ def run(args, kwargs):
     train_times = np.array(train_times)
     mean_train_time = np.mean(train_times)
     std_train_time = np.std(train_times, ddof=1)
-    print('Average train time per epoch: %.2f +/- %.2f' % (mean_train_time, std_train_time))
+    logger.info('Average train time per epoch: %.2f +/- %.2f' % (mean_train_time, std_train_time))
 
     # ==================================================================================================================
     # EVALUATION
@@ -298,9 +297,9 @@ def run(args, kwargs):
     test_score_file = snap_dir + 'test_scores.txt'
 
     with open('experiment_log.txt', 'a') as ff:
-        print(args, file=ff)
-        print('Stopped after %d epochs' % epoch, file=ff)
-        print('Average train time per epoch: %.2f +/- %.2f' % (mean_train_time, std_train_time), file=ff)
+        logger.info(args, file=ff)
+        logger.info('Stopped after %d epochs' % epoch, file=ff)
+        logger.info('Average train time per epoch: %.2f +/- %.2f' % (mean_train_time, std_train_time), file=ff)
 
     final_model = torch.load(snap_dir + args.flow + '.model')
 
@@ -309,14 +308,14 @@ def run(args, kwargs):
         test_loss, test_bpd = evaluate(test_loader, final_model, args, testing=True)
 
         with open('experiment_log.txt', 'a') as ff:
-            print('FINAL EVALUATION ON VALIDATION SET\n' 'ELBO (VAL): {:.4f}\n'.format(validation_loss), file=ff)
-            print('FINAL EVALUATION ON TEST SET\n' 'NLL (TEST): {:.4f}\n'.format(test_loss), file=ff)
+            logger.info('FINAL EVALUATION ON VALIDATION SET\n' 'ELBO (VAL): {:.4f}\n'.format(validation_loss), file=ff)
+            logger.info('FINAL EVALUATION ON TEST SET\n' 'NLL (TEST): {:.4f}\n'.format(test_loss), file=ff)
             if args.input_type != 'binary':
-                print(
+                logger.info(
                     'FINAL EVALUATION ON VALIDATION SET\n'
                     'ELBO (VAL) BPD : {:.4f}\n'.format(validation_bpd), file=ff
                 )
-                print('FINAL EVALUATION ON TEST SET\n' 'NLL (TEST) BPD: {:.4f}\n'.format(test_bpd), file=ff)
+                logger.info('FINAL EVALUATION ON TEST SET\n' 'NLL (TEST) BPD: {:.4f}\n'.format(test_bpd), file=ff)
 
     else:
         validation_loss, validation_bpd = evaluate(val_loader, final_model, args)
@@ -324,9 +323,12 @@ def run(args, kwargs):
         _, _ = evaluate(test_loader, final_model, args, testing=True, file=test_score_file)
 
         with open('experiment_log.txt', 'a') as ff:
-            print('FINAL EVALUATION ON VALIDATION SET\n' 'ELBO (VALIDATION): {:.4f}\n'.format(validation_loss), file=ff)
+            logger.info(
+                'FINAL EVALUATION ON VALIDATION SET\n'
+                'ELBO (VALIDATION): {:.4f}\n'.format(validation_loss), file=ff
+            )
             if args.input_type != 'binary':
-                print(
+                logger.info(
                     'FINAL EVALUATION ON VALIDATION SET\n'
                     'ELBO (VAL) BPD : {:.4f}\n'.format(validation_bpd), file=ff
                 )

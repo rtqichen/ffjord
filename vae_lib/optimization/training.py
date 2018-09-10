@@ -8,7 +8,7 @@ from vae_lib.utils.log_likelihood import calculate_likelihood
 import numpy as np
 
 
-def train(epoch, train_loader, model, opt, args):
+def train(epoch, train_loader, model, opt, args, logger):
 
     model.train()
     train_loss = np.zeros(len(train_loader))
@@ -18,7 +18,7 @@ def train(epoch, train_loader, model, opt, args):
 
     # set warmup coefficient
     beta = min([(epoch * 1.) / max([args.warmup, 1.]), args.max_beta])
-    print('beta = {:5.4f}'.format(beta))
+    logger.info('beta = {:5.4f}'.format(beta))
     for batch_idx, (data, _) in enumerate(train_loader):
 
         if args.cuda:
@@ -47,7 +47,7 @@ def train(epoch, train_loader, model, opt, args):
 
         if batch_idx % args.log_interval == 0:
             if args.input_type == 'binary':
-                print(
+                logger.info(
                     'Epoch: {:3d} [{:5d}/{:5d} ({:2.0f}%)]  \tLoss: {:11.6f}\trec: {:11.6f}\tkl: {:11.6f}'.format(
                         epoch, num_data,
                         len(train_loader.sampler), 100. * batch_idx / len(train_loader), loss.item(), rec, kl
@@ -56,15 +56,15 @@ def train(epoch, train_loader, model, opt, args):
             else:
                 perc = 100. * batch_idx / len(train_loader)
                 tmp = 'Epoch: {:3d} [{:5d}/{:5d} ({:2.0f}%)] \tLoss: {:11.6f}\tbpd: {:8.6f}'
-                print(
+                logger.info(
                     tmp.format(epoch, num_data, len(train_loader.sampler), perc, loss.item(), bpd),
                     '\trec: {:11.3f}\tkl: {:11.6f}'.format(rec, kl)
                 )
 
     if args.input_type == 'binary':
-        print('====> Epoch: {:3d} Average train loss: {:.4f}'.format(epoch, train_loss.sum() / len(train_loader)))
+        logger.info('====> Epoch: {:3d} Average train loss: {:.4f}'.format(epoch, train_loss.sum() / len(train_loader)))
     else:
-        print(
+        logger.info(
             '====> Epoch: {:3d} Average train loss: {:.4f}, average bpd: {:.4f}'.
             format(epoch, train_loss.sum() / len(train_loader), train_bpd.sum() / len(train_loader))
         )
@@ -114,7 +114,7 @@ def evaluate(data_loader, model, args, testing=False, file=None, epoch=0):
             if args.cuda:
                 test_data = test_data.cuda()
 
-            print('Computing log-likelihood on test set')
+            logger.info('Computing log-likelihood on test set')
 
             model.eval()
 
@@ -131,38 +131,38 @@ def evaluate(data_loader, model, args, testing=False, file=None, epoch=0):
 
     if file is None:
         if testing:
-            print('====> Test set loss: {:.4f}'.format(loss))
-            print('====> Test set log-likelihood: {:.4f}'.format(log_likelihood))
+            logger.info('====> Test set loss: {:.4f}'.format(loss))
+            logger.info('====> Test set log-likelihood: {:.4f}'.format(log_likelihood))
 
             if args.input_type != 'binary':
-                print('====> Test set bpd (elbo): {:.4f}'.format(bpd))
-                print(
+                logger.info('====> Test set bpd (elbo): {:.4f}'.format(bpd))
+                logger.info(
                     '====> Test set bpd (log-likelihood): {:.4f}'.
                     format(log_likelihood / (np.prod(args.input_size) * np.log(2.)))
                 )
 
         else:
-            print('====> Validation set loss: {:.4f}'.format(loss))
+            logger.info('====> Validation set loss: {:.4f}'.format(loss))
             if args.input_type in ['multinomial']:
-                print('====> Validation set bpd: {:.4f}'.format(bpd))
+                logger.info('====> Validation set bpd: {:.4f}'.format(bpd))
     else:
         with open(file, 'a') as ff:
             if testing:
-                print('====> Test set loss: {:.4f}'.format(loss), file=ff)
-                print('====> Test set log-likelihood: {:.4f}'.format(log_likelihood), file=ff)
+                logger.info('====> Test set loss: {:.4f}'.format(loss), file=ff)
+                logger.info('====> Test set log-likelihood: {:.4f}'.format(log_likelihood), file=ff)
 
                 if args.input_type != 'binary':
-                    print('====> Test set bpd: {:.4f}'.format(bpd), file=ff)
-                    print(
+                    logger.info('====> Test set bpd: {:.4f}'.format(bpd), file=ff)
+                    logger.info(
                         '====> Test set bpd (log-likelihood): {:.4f}'.format(
                             log_likelihood / (np.prod(args.input_size) * np.log(2.))
                         ), file=ff
                     )
 
             else:
-                print('====> Validation set loss: {:.4f}'.format(loss), file=ff)
+                logger.info('====> Validation set loss: {:.4f}'.format(loss), file=ff)
                 if args.input_type != 'binary':
-                    print(
+                    logger.info(
                         '====> Validation set bpd: {:.4f}'.format(loss / (np.prod(args.input_size) * np.log(2.))),
                         file=ff
                     )
