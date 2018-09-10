@@ -175,7 +175,7 @@ def build_model_tabular(args, dims, regularization_fns=None):
     chain = [build_cnf() for _ in range(args.num_blocks)]
     if args.batch_norm:
         bn_layers = [layers.MovingBatchNorm1d(dims, bn_lag=args.bn_lag) for _ in range(args.num_blocks)]
-        bn_chain = []
+        bn_chain = [layers.MovingBatchNorm1d(dims, bn_lag=args.bn_lag)]
         for a, b in zip(chain, bn_layers):
             bn_chain.append(a)
             bn_chain.append(b)
