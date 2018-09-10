@@ -23,7 +23,8 @@ parser.add_argument(
     "--layer_type", type=str, default="concatsquash",
     choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
 )
-parser.add_argument('--dims', type=str, default='1024-1024')
+parser.add_argument('--hdim_factor', type=int, default=10)
+parser.add_argument('--nhidden', type=int, default=1)
 parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
 parser.add_argument('--time_length', type=float, default=1.0)
 parser.add_argument('--train_T', type=eval, default=True)
@@ -44,12 +45,10 @@ parser.add_argument('--rademacher', type=eval, default=False, choices=[True, Fal
 parser.add_argument('--batch_norm', type=eval, default=False, choices=[True, False])
 parser.add_argument('--bn_lag', type=float, default=0)
 
-parser.add_argument('--max_epochs', type=int, default=2500)
 parser.add_argument('--early_stopping', type=int, default=30)
 parser.add_argument('--batch_size', type=int, default=1000)
 parser.add_argument('--test_batch_size', type=int, default=None)
 parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument("--warmup_iters", type=float, default=5000)
 parser.add_argument('--weight_decay', type=float, default=1e-6)
 
 # Track quantities
@@ -61,7 +60,7 @@ parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df
 parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
 
 parser.add_argument('--save', type=str, default='experiments/cnf')
-parser.add_argument('--val_freq', type=int, default=1000)
+parser.add_argument('--val_freq', type=int, default=200)
 parser.add_argument('--log_freq', type=int, default=10)
 args = parser.parse_args()
 
@@ -74,13 +73,6 @@ if args.layer_type == "blend":
     args.time_length = 1.0
 
 logger.info(args)
-
-
-def update_lr(optimizer, itr):
-    iter_frac = min(float(itr + 1) / max(args.warmup_iters, 1), 1.0)
-    lr = args.lr * iter_frac
-    for param_group in optimizer.param_groups:
-        param_group["lr"] = lr
 
 
 def load_data(name):
@@ -133,6 +125,8 @@ if __name__ == '__main__':
     val_loader = DataLoader(data.val.x, batch_size=test_batch_size, shuffle=False)
     test_loader = DataLoader(data.tst.x, batch_size=test_batch_size, shuffle=False)
 
+    args.dims = '-'.join([str(args.hdim_factor * data.n_dims)] * args.nhidden)
+
     regularization_fns, regularization_coeffs = create_regularization_fns(args)
     model = build_model_tabular(args, data.n_dims, regularization_fns).to(device)
     set_cnf_options(args, model)
@@ -157,7 +151,6 @@ if __name__ == '__main__':
         if args.early_stopping > 0 and n_vals_without_improvement > args.early_stopping:
             break
 
-        update_lr(optimizer, itr)
         optimizer.zero_grad()
 
         x = cvt(x)
