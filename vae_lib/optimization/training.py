@@ -72,7 +72,7 @@ def train(epoch, train_loader, model, opt, args, logger):
     return train_loss
 
 
-def evaluate(data_loader, model, args, testing=False, file=None, epoch=0):
+def evaluate(data_loader, model, args, logger, testing=False, file=None, epoch=0):
     model.eval()
     loss = 0.
     batch_idx = 0

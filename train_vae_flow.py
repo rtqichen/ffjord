@@ -148,7 +148,6 @@ kwargs = {'num_workers': 0, 'pin_memory': True} if args.cuda else {}
 
 
 def run(args, kwargs):
-
     # ==================================================================================================================
     # SNAPSHOTS
     # ==================================================================================================================
@@ -246,7 +245,7 @@ def run(args, kwargs):
         train_times.append(time.time() - t_start)
         logger.info('One training epoch took %.2f seconds' % (time.time() - t_start))
 
-        v_loss, v_bpd = evaluate(val_loader, model, args, epoch=epoch)
+        v_loss, v_bpd = evaluate(val_loader, model, args, logger, epoch=epoch)
 
         val_loss.append(v_loss)
 
