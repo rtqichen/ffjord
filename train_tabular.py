@@ -23,12 +23,12 @@ parser.add_argument(
     "--layer_type", type=str, default="concatsquash",
     choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
 )
-parser.add_argument('--dims', type=str, default='64-64-64')
+parser.add_argument('--dims', type=str, default='1024-1024')
 parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
-parser.add_argument('--time_length', type=float, default=0.5)
+parser.add_argument('--time_length', type=float, default=1.0)
 parser.add_argument('--train_T', type=eval, default=True)
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
-parser.add_argument("--nonlinearity", type=str, default="tanh", choices=odefunc.NONLINEARITIES)
+parser.add_argument("--nonlinearity", type=str, default="softplus", choices=odefunc.NONLINEARITIES)
 
 parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
 parser.add_argument('--atol', type=float, default=1e-5)
@@ -46,8 +46,8 @@ parser.add_argument('--bn_lag', type=float, default=0)
 
 parser.add_argument('--max_epochs', type=int, default=2500)
 parser.add_argument('--early_stopping', type=int, default=30)
-parser.add_argument('--batch_size', type=int, default=100)
-parser.add_argument('--test_batch_size', type=int, default=1000)
+parser.add_argument('--batch_size', type=int, default=1000)
+parser.add_argument('--test_batch_size', type=int, default=None)
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument("--warmup_iters", type=float, default=5000)
 parser.add_argument('--weight_decay', type=float, default=1e-6)
@@ -129,8 +129,10 @@ if __name__ == '__main__':
 
     data = load_data(args.data)
     train_loader = DataLoader(data.trn.x, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(data.val.x, batch_size=args.test_batch_size, shuffle=False)
-    test_loader = DataLoader(data.tst.x, batch_size=args.test_batch_size, shuffle=False)
+
+    test_batch_size = args.test_batch_size if args.test_batch_size is not None else args.batch_size
+    val_loader = DataLoader(data.val.x, batch_size=test_batch_size, shuffle=False)
+    test_loader = DataLoader(data.tst.x, batch_size=test_batch_size, shuffle=False)
 
     regularization_fns, regularization_coeffs = create_regularization_fns(args)
     model = build_model_tabular(args, data.n_dims, regularization_fns).to(device)
