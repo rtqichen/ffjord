@@ -12,6 +12,7 @@ def standard_normal_logprob(z):
 
 
 def set_cnf_options(args, model):
+
     def _set(module):
         if isinstance(module, layers.CNF):
             # Set training settings
@@ -38,7 +39,9 @@ def set_cnf_options(args, model):
 
 
 def count_nfe(model):
+
     class AccNumEvals(object):
+
         def __init__(self):
             self.num_evals = 0
 
@@ -56,7 +59,9 @@ def count_parameters(model):
 
 
 def count_total_time(model):
+
     class Accumulator(object):
+
         def __init__(self):
             self.total_time = 0
 
@@ -88,6 +93,7 @@ def add_spectral_norm(model, logger=None):
 
 
 def spectral_norm_power_iteration(model, n_power_iterations=1):
+
     def recursive_power_iteration(module):
         if hasattr(module, spectral_norm.POWER_ITERATION_FN):
             getattr(module, spectral_norm.POWER_ITERATION_FN)(n_power_iterations)
@@ -138,7 +144,7 @@ def get_regularization(model, regularization_coeffs):
     return acc_reg_states
 
 
-def build_model_tabular(args, dims, regularization_fns):
+def build_model_tabular(args, dims, regularization_fns=None):
 
     hidden_dims = tuple(map(int, args.dims.split("-")))
 
@@ -175,5 +181,7 @@ def build_model_tabular(args, dims, regularization_fns):
             bn_chain.append(b)
         chain = bn_chain
     model = layers.SequentialFlow(chain)
+
+    set_cnf_options(args, model)
 
     return model

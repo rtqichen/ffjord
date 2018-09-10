@@ -33,7 +33,7 @@ MANIFEST
 # experiment files
 log/
 summary/
-
+data/
 plot/
 experiments/
 png/
