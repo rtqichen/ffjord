@@ -51,4 +51,4 @@ class CNFVAE(VAE):
 
         x_mean = self.decode(zk)
 
-        return x_mean, z_mu, z_var, delta_logp.view(-1), z0, zk
+        return x_mean, z_mu, z_var, -delta_logp.view(-1), z0, zk
