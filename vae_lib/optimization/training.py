@@ -109,7 +109,7 @@ def evaluate(data_loader, model, args, logger, testing=False, file=None, epoch=0
     # Compute log-likelihood
     if testing:
         with torch.no_grad():
-            test_data = data_loader.dataset.data_tensor
+            test_data = data_loader.dataset.tensors[0]
 
             if args.cuda:
                 test_data = test_data.cuda()
@@ -145,27 +145,6 @@ def evaluate(data_loader, model, args, logger, testing=False, file=None, epoch=0
             logger.info('====> Validation set loss: {:.4f}'.format(loss))
             if args.input_type in ['multinomial']:
                 logger.info('====> Validation set bpd: {:.4f}'.format(bpd))
-    else:
-        with open(file, 'a') as ff:
-            if testing:
-                logger.info('====> Test set loss: {:.4f}'.format(loss), file=ff)
-                logger.info('====> Test set log-likelihood: {:.4f}'.format(log_likelihood), file=ff)
-
-                if args.input_type != 'binary':
-                    logger.info('====> Test set bpd: {:.4f}'.format(bpd), file=ff)
-                    logger.info(
-                        '====> Test set bpd (log-likelihood): {:.4f}'.format(
-                            log_likelihood / (np.prod(args.input_size) * np.log(2.))
-                        ), file=ff
-                    )
-
-            else:
-                logger.info('====> Validation set loss: {:.4f}'.format(loss), file=ff)
-                if args.input_type != 'binary':
-                    logger.info(
-                        '====> Validation set bpd: {:.4f}'.format(loss / (np.prod(args.input_size) * np.log(2.))),
-                        file=ff
-                    )
 
     if not testing:
         return loss, bpd

@@ -52,11 +52,6 @@ parser.add_argument(
     help='output directory for model snapshots etc.'
 )
 
-fp = parser.add_mutually_exclusive_group(required=False)
-fp.add_argument('-te', '--testing', action='store_true', dest='testing', help='evaluate on test set after training')
-fp.add_argument('-va', '--validation', action='store_false', dest='testing', help='only evaluate on validation set')
-parser.set_defaults(testing=True)
-
 # optimization settings
 parser.add_argument(
     '-e', '--epochs', type=int, default=2000, metavar='EPOCHS', help='number of epochs to train (default: 2000)'
@@ -292,31 +287,20 @@ def run(args, kwargs):
     # EVALUATION
     # ==================================================================================================================
 
-    test_score_file = snap_dir + 'test_scores.txt'
     logger.info(args)
     logger.info('Stopped after %d epochs' % epoch)
     logger.info('Average train time per epoch: %.2f +/- %.2f' % (mean_train_time, std_train_time))
 
     final_model = torch.load(snap_dir + args.flow + '.model')
 
-    if args.testing:
-        validation_loss, validation_bpd = evaluate(val_loader, final_model, args)
-        test_loss, test_bpd = evaluate(test_loader, final_model, args, testing=True)
+    validation_loss, validation_bpd = evaluate(val_loader, final_model, args, logger)
+    test_loss, test_bpd = evaluate(test_loader, final_model, args, logger, testing=True)
 
-        logger.info('FINAL EVALUATION ON VALIDATION SET\n' 'ELBO (VAL): {:.4f}\n'.format(validation_loss))
-        logger.info('FINAL EVALUATION ON TEST SET\n' 'NLL (TEST): {:.4f}\n'.format(test_loss))
-        if args.input_type != 'binary':
-            logger.info('FINAL EVALUATION ON VALIDATION SET\n' 'ELBO (VAL) BPD : {:.4f}\n'.format(validation_bpd))
-            logger.info('FINAL EVALUATION ON TEST SET\n' 'NLL (TEST) BPD: {:.4f}\n'.format(test_bpd))
-
-    else:
-        validation_loss, validation_bpd = evaluate(val_loader, final_model, args)
-        # save the test score in case you want to look it up later.
-        _, _ = evaluate(test_loader, final_model, args, testing=True, file=test_score_file)
-
-        logger.info('FINAL EVALUATION ON VALIDATION SET\n' 'ELBO (VALIDATION): {:.4f}\n'.format(validation_loss))
-        if args.input_type != 'binary':
-            logger.info('FINAL EVALUATION ON VALIDATION SET\n' 'ELBO (VAL) BPD : {:.4f}\n'.format(validation_bpd))
+    logger.info('FINAL EVALUATION ON VALIDATION SET\n' 'ELBO (VAL): {:.4f}\n'.format(validation_loss))
+    logger.info('FINAL EVALUATION ON TEST SET\n' 'NLL (TEST): {:.4f}\n'.format(test_loss))
+    if args.input_type != 'binary':
+        logger.info('FINAL EVALUATION ON VALIDATION SET\n' 'ELBO (VAL) BPD : {:.4f}\n'.format(validation_bpd))
+        logger.info('FINAL EVALUATION ON TEST SET\n' 'NLL (TEST) BPD: {:.4f}\n'.format(test_bpd))
 
 
 if __name__ == "__main__":
