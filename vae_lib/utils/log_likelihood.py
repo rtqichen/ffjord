@@ -4,7 +4,7 @@ from scipy.misc import logsumexp
 from vae_lib.optimization.loss import calculate_loss_array
 
 
-def calculate_likelihood(X, model, args, S=5000, MB=500):
+def calculate_likelihood(X, model, args, logger, S=5000, MB=500):
 
     # set auxiliary variables for number of training and test sets
     N_test = X.size(0)
@@ -21,7 +21,7 @@ def calculate_likelihood(X, model, args, S=5000, MB=500):
 
     for j in range(N_test):
         if j % 100 == 0:
-            print('Progress: {:.2f}%'.format(j / (1. * N_test) * 100))
+            logger.info('Progress: {:.2f}%'.format(j / (1. * N_test) * 100))
 
         x_single = X[j].unsqueeze(0)
 
