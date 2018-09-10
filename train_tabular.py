@@ -31,8 +31,8 @@ parser.add_argument("--divergence_fn", type=str, default="approximate", choices=
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=odefunc.NONLINEARITIES)
 
 parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
-parser.add_argument('--atol', type=float, default=1e-5)
-parser.add_argument('--rtol', type=float, default=1e-5)
+parser.add_argument('--atol', type=float, default=1e-8)
+parser.add_argument('--rtol', type=float, default=1e-6)
 parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
 
 parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
@@ -61,8 +61,7 @@ parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df
 parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
 
 parser.add_argument('--save', type=str, default='experiments/cnf')
-parser.add_argument('--viz_freq', type=int, default=100)
-parser.add_argument('--val_freq', type=int, default=100)
+parser.add_argument('--val_freq', type=int, default=1000)
 parser.add_argument('--log_freq', type=int, default=10)
 args = parser.parse_args()
 
@@ -143,92 +142,92 @@ if __name__ == '__main__':
 
     optimizer = Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
+    time_meter = utils.RunningAverageMeter(0.98)
+    loss_meter = utils.RunningAverageMeter(0.98)
+    nfef_meter = utils.RunningAverageMeter(0.98)
+    nfeb_meter = utils.RunningAverageMeter(0.98)
+    tt_meter = utils.RunningAverageMeter(0.98)
+
     best_loss = float('inf')
     itr = 0
-    n_iters_without_improvement = 0
-    for epoch in range(args.max_epochs):
-        if args.early_stopping > 0 and n_iters_without_improvement > args.early_stopping:
+    n_vals_without_improvement = 0
+    end = time.time()
+    model.train()
+    for itr, x in enumerate(utils.inf_generator(train_loader)):
+        if args.early_stopping > 0 and n_vals_without_improvement > args.early_stopping:
             break
 
-        time_meter = utils.RunningAverageMeter(0.93)
-        loss_meter = utils.RunningAverageMeter(0.93)
-        nfef_meter = utils.RunningAverageMeter(0.93)
-        nfeb_meter = utils.RunningAverageMeter(0.93)
-        tt_meter = utils.RunningAverageMeter(0.93)
+        update_lr(optimizer, itr)
+        optimizer.zero_grad()
 
-        # Training loop.
-        model.train()
-        end = time.time()
-        for _, x in enumerate(train_loader):
-            update_lr(optimizer, itr)
-            optimizer.zero_grad()
+        x = cvt(x)
+        loss = compute_loss(x, model)
+        loss_meter.update(loss.item())
 
-            x = cvt(x)
-            loss = compute_loss(x, model)
-            loss_meter.update(loss.item())
+        if len(regularization_coeffs) > 0:
+            reg_states = get_regularization(model, regularization_coeffs)
+            reg_loss = sum(
+                reg_state * coeff for reg_state, coeff in zip(reg_states, regularization_coeffs) if coeff != 0
+            )
+            loss = loss + reg_loss
 
+        total_time = count_total_time(model)
+        nfe_forward = count_nfe(model)
+
+        loss.backward()
+        optimizer.step()
+
+        nfe_total = count_nfe(model)
+        nfe_backward = nfe_total - nfe_forward
+        nfef_meter.update(nfe_forward)
+        nfeb_meter.update(nfe_backward)
+
+        time_meter.update(time.time() - end)
+        tt_meter.update(total_time)
+
+        if itr % args.log_freq == 0:
+            log_message = (
+                'Iter {:06d} | Epoch {:.2f} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | NFE Forward {:.0f}({:.1f})'
+                ' | NFE Backward {:.0f}({:.1f}) | CNF Time {:.4f}({:.4f})'.format(
+                    itr, itr / len(train_loader), time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg,
+                    nfef_meter.val, nfef_meter.avg, nfeb_meter.val, nfeb_meter.avg, tt_meter.val, tt_meter.avg
+                )
+            )
             if len(regularization_coeffs) > 0:
-                reg_states = get_regularization(model, regularization_coeffs)
-                reg_loss = sum(
-                    reg_state * coeff for reg_state, coeff in zip(reg_states, regularization_coeffs) if coeff != 0
-                )
-                loss = loss + reg_loss
+                log_message = append_regularization_to_log(log_message, regularization_fns, reg_states)
 
-            total_time = count_total_time(model)
-            nfe_forward = count_nfe(model)
-
-            loss.backward()
-            optimizer.step()
-
-            nfe_total = count_nfe(model)
-            nfe_backward = nfe_total - nfe_forward
-            nfef_meter.update(nfe_forward)
-            nfeb_meter.update(nfe_backward)
-
-            time_meter.update(time.time() - end)
-            tt_meter.update(total_time)
-
-            if itr % args.log_freq == 0:
-                log_message = (
-                    'Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | NFE Forward {:.0f}({:.1f})'
-                    ' | NFE Backward {:.0f}({:.1f}) | CNF Time {:.4f}({:.4f})'.format(
-                        itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, nfef_meter.val,
-                        nfef_meter.avg, nfeb_meter.val, nfeb_meter.avg, tt_meter.val, tt_meter.avg
-                    )
-                )
-                if len(regularization_coeffs) > 0:
-                    log_message = append_regularization_to_log(log_message, regularization_fns, reg_states)
-
-                logger.info(log_message)
-            itr += 1
-            end = time.time()
+            logger.info(log_message)
+        itr += 1
+        end = time.time()
 
         # Validation loop.
-        model.eval()
-        start_time = time.time()
-        with torch.no_grad():
-            val_loss = utils.AverageMeter()
-            val_nfe = utils.AverageMeter()
-            for _, x in enumerate(val_loader):
-                x = cvt(x)
-                val_loss.update(compute_loss(x, model).item(), x.shape[0])
-                val_nfe.update(count_nfe(model))
+        if itr % args.val_freq == 0:
+            model.eval()
+            start_time = time.time()
+            with torch.no_grad():
+                val_loss = utils.AverageMeter()
+                val_nfe = utils.AverageMeter()
+                for _, x in enumerate(val_loader):
+                    x = cvt(x)
+                    val_loss.update(compute_loss(x, model).item(), x.shape[0])
+                    val_nfe.update(count_nfe(model))
 
-            if val_loss.avg < best_loss:
-                best_loss = val_loss.avg
-                utils.makedirs(args.save)
-                torch.save({
-                    'args': args,
-                    'state_dict': model.state_dict(),
-                }, os.path.join(args.save, 'checkpt.pth'))
-                n_iters_without_improvement = 0
-            else:
-                n_iters_without_improvement += 1
+                if val_loss.avg < best_loss:
+                    best_loss = val_loss.avg
+                    utils.makedirs(args.save)
+                    torch.save({
+                        'args': args,
+                        'state_dict': model.state_dict(),
+                    }, os.path.join(args.save, 'checkpt.pth'))
+                    n_vals_without_improvement = 0
+                else:
+                    n_vals_without_improvement += 1
 
-            log_message = '[VAL] Epoch {:04d} | Val Loss {:.6f} | NFE {:.0f} | NoImproveEpochs {:02d}/{:02d}'.format(
-                epoch, val_loss.avg, val_nfe.avg, n_iters_without_improvement, args.early_stopping
-            )
-            logger.info(log_message)
+                log_message = '[VAL] Iter {:06d} | Val Loss {:.6f} | NFE {:.0f} | NoImproveEpochs {:02d}/{:02d}'.format(
+                    itr, val_loss.avg, val_nfe.avg, n_vals_without_improvement, args.early_stopping
+                )
+                logger.info(log_message)
+            model.train()
 
     logger.info('Training has finished.')
     model = restore_model(model, os.path.join(args.save, 'checkpt.pth')).to(device)
@@ -241,5 +240,5 @@ if __name__ == '__main__':
             x = cvt(x)
             test_loss.update(compute_loss(x, model).item(), x.shape[0])
             test_nfe.update(count_nfe(model))
-        log_message = '[TEST] Epoch {:04d} | Test Loss {:.6f} | NFE {:.0f}'.format(epoch, test_loss.avg, test_nfe.avg)
+        log_message = '[TEST] Iter {:06d} | Test Loss {:.6f} | NFE {:.0f}'.format(itr, test_loss.avg, test_nfe.avg)
         logger.info(log_message)
