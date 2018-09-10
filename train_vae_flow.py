@@ -62,18 +62,17 @@ parser.add_argument(
     '-e', '--epochs', type=int, default=2000, metavar='EPOCHS', help='number of epochs to train (default: 2000)'
 )
 parser.add_argument(
-    '-es', '--early_stopping_epochs', type=int, default=100, metavar='EARLY_STOPPING',
+    '-es', '--early_stopping_epochs', type=int, default=30, metavar='EARLY_STOPPING',
     help='number of early stopping epochs'
 )
 
 parser.add_argument(
-    '-bs', '--batch_size', type=int, default=100, metavar='BATCH_SIZE',
-    help='input batch size for training (default: 100)'
+    '-bs', '--batch_size', type=int, default=500, metavar='BATCH_SIZE', help='input batch size for training'
 )
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.0005, metavar='LEARNING_RATE', help='learning rate')
 
 parser.add_argument(
-    '-w', '--warmup', type=int, default=100, metavar='N',
+    '-w', '--warmup', type=int, default=20, metavar='N',
     help='number of epochs for warm-up. Set to 0 to turn warmup off.'
 )
 parser.add_argument('--max_beta', type=float, default=1., metavar='MB', help='max beta for warm-up')
@@ -110,7 +109,7 @@ parser.add_argument(
     "--layer_type", type=str, default="concat",
     choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
 )
-parser.add_argument('--dims', type=str, default='1024')
+parser.add_argument('--dims', type=str, default='1024-1024')
 parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
 parser.add_argument('--time_length', type=float, default=0.5)
 parser.add_argument('--train_T', type=eval, default=False)
