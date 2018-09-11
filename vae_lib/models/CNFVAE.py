@@ -103,10 +103,10 @@ class AmortizedBiasODEnet(nn.Module):
         return dx
 
 
-class AmortizedRankOneODEnet(nn.Module):
+class AmortizedLowRankODEnet(nn.Module):
 
-    def __init__(self, hidden_dims, input_dim, layer_type="concat", nonlinearity="softplus"):
-        super(AmortizedRankOneODEnet, self).__init__()
+    def __init__(self, hidden_dims, input_dim, rank=1, layer_type="concat", nonlinearity="softplus"):
+        super(AmortizedLowRankODEnet, self).__init__()
         base_layer = {
             "ignore": diffeq_layers.IgnoreLinear,
             "hyper": diffeq_layers.HyperLinear,
@@ -133,24 +133,25 @@ class AmortizedRankOneODEnet(nn.Module):
 
         self.layers = nn.ModuleList(layers)
         self.activation_fns = nn.ModuleList(activation_fns[:-1])
+        self.rank = rank
 
     def _unpack_params(self, params):
         return [params]
 
-    def _rank_1_bmm(self, x, u, v):
-        xu = torch.bmm(x.view(x.size(0), 1, x.size(1)), u.view(u.size(0), u.size(1), 1))  # (batch, 1, 1)
-        xuv = torch.bmm(xu, v.view(v.size(0), 1, v.size(1)))  # (batch, 1, out_dim)
-        return xuv[:, 0, :]
+    def _rank_k_bmm(self, x, u, v):
+        xu = torch.bmm(x[:, None], u.view(x.shape[0], x.shape[-1], self.rank))
+        xuv = torch.bmm(xu, v.view(x.shape[0], self.rank, -1))
+        return xuv[:, 0]
 
     def forward(self, t, y, am_params):
         dx = y
         for l, (layer, in_dim, out_dim) in enumerate(zip(self.layers, self.input_dims, self.output_dims)):
-            this_u, am_params = am_params[:, :in_dim], am_params[:, in_dim:]
-            this_v, am_params = am_params[:, :out_dim], am_params[:, out_dim:]
+            this_u, am_params = am_params[:, :in_dim * self.rank], am_params[:, in_dim * self.rank:]
+            this_v, am_params = am_params[:, :out_dim * self.rank], am_params[:, out_dim * self.rank:]
             this_bias, am_params = am_params[:, :out_dim], am_params[:, out_dim:]
 
             xw = layer(t, dx)
-            xw_am = self._rank_1_bmm(dx, this_u, this_v)
+            xw_am = self._rank_k_bmm(dx, this_u, this_v)
             dx = xw + xw_am + this_bias
             # if not last layer, use nonlinearity
             if l < len(self.layers) - 1:
@@ -211,18 +212,29 @@ class HyperODEnet(nn.Module):
 def construct_amortized_odefunc(args, z_dim, amortization_type="bias"):
 
     hidden_dims = get_hidden_dims(args)
-    diffeq_fn = {
-        "bias": AmortizedBiasODEnet,
-        "hyper": HyperODEnet,
-        "rank_1": AmortizedRankOneODEnet,
-    }[amortization_type]
 
-    diffeq = diffeq_fn(
-        hidden_dims=hidden_dims,
-        input_dim=z_dim,
-        layer_type=args.layer_type,
-        nonlinearity=args.nonlinearity,
-    )
+    if amortization_type == "bias":
+        diffeq = AmortizedBiasODEnet(
+            hidden_dims=hidden_dims,
+            input_dim=z_dim,
+            layer_type=args.layer_type,
+            nonlinearity=args.nonlinearity,
+        )
+    elif amortization_type == "hyper":
+        diffeq = HyperODEnet(
+            hidden_dims=hidden_dims,
+            input_dim=z_dim,
+            layer_type=args.layer_type,
+            nonlinearity=args.nonlinearity,
+        )
+    elif amortization_type == "low_rank":
+        diffeq = AmortizedLowRankODEnet(
+            hidden_dims=hidden_dims,
+            input_dim=z_dim,
+            layer_type=args.layer_type,
+            nonlinearity=args.nonlinearity,
+            rank=args.rank,
+        )
     odefunc = layers.ODEfunc(
         diffeq=diffeq,
         divergence_fn=args.divergence_fn,
@@ -305,13 +317,13 @@ class AmortizedBiasCNFVAE(AmortizedCNFVAE):
         return nn.ModuleList([nn.Linear(self.h_size, bias_size) for _ in range(args.num_blocks)])
 
 
-class AmortizedRankOneCNFVAE(AmortizedCNFVAE):
-    amortization_type = "rank_1"
+class AmortizedLowRankCNFVAE(AmortizedCNFVAE):
+    amortization_type = "low_rank"
 
     def _amortized_layers(self, args):
         out_dims = get_hidden_dims(args)
         in_dims = (out_dims[-1],) + out_dims[:-1]
-        params_size = sum(in_dims) + 2 * sum(out_dims)
+        params_size = (sum(in_dims) + sum(out_dims)) * args.rank + sum(out_dims)
         return nn.ModuleList([nn.Linear(self.h_size, params_size) for _ in range(args.num_blocks)])
 
 
