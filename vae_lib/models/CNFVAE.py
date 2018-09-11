@@ -6,24 +6,22 @@ from .VAE import VAE
 import lib.layers.diffeq_layers as diffeq_layers
 from lib.layers.odefunc import NONLINEARITIES
 
+
 def get_hidden_dims(args):
     return tuple(map(int, args.dims.split("-"))) + (args.z_size,)
 
+
 def concat_layer_num_params(in_dim, out_dim):
     return (in_dim + 1) * out_dim + out_dim
+
 
 class CNFVAE(VAE):
 
     def __init__(self, args):
         super(CNFVAE, self).__init__(args)
 
-        # Initialize log-det-jacobian to zero
-        self.log_det_j = 0.
-
         # CNF model
         self.cnf = build_model_tabular(args, args.z_size)
-
-        # TODO: Amortized flow parameters
 
         if args.cuda:
             self.cuda()
@@ -38,8 +36,6 @@ class CNFVAE(VAE):
         mean_z = self.q_z_mean(h)
         var_z = self.q_z_var(h)
 
-        # TODO: Amortized flow parameters
-
         return mean_z, var_z
 
     def forward(self, x):
@@ -47,8 +43,6 @@ class CNFVAE(VAE):
         Forward pass with planar flows for the transformation z_0 -> z_1 -> ... -> z_k.
         Log determinant is computed as log_det_j = N E_q_z0[\sum_k log |det dz_k/dz_k-1| ].
         """
-
-        self.log_det_j = 0.
 
         z_mu, z_var = self.encode(x)
 
@@ -64,6 +58,7 @@ class CNFVAE(VAE):
 
 
 class AmortizedBiasODEnet(nn.Module):
+
     def __init__(self, hidden_dims, input_dim, layer_type="concat", nonlinearity="softplus"):
         super(AmortizedBiasODEnet, self).__init__()
         base_layer = {
@@ -108,6 +103,7 @@ class AmortizedBiasODEnet(nn.Module):
 
 
 class HyperODEnet(nn.Module):
+
     def __init__(self, hidden_dims, input_dim, layer_type="concat", nonlinearity="softplus"):
         super(HyperODEnet, self).__init__()
         assert layer_type == "concat"
@@ -162,6 +158,7 @@ def build_amortized_model(args, z_dim, amortization_type="bias", regularization_
 
     hidden_dims = get_hidden_dims(args)
     diffeq_fn = {"bias": AmortizedBiasODEnet, "hyper": HyperODEnet}[amortization_type]
+
     def build_cnf():
         diffeq = diffeq_fn(
             hidden_dims=hidden_dims,
@@ -185,13 +182,6 @@ def build_amortized_model(args, z_dim, amortization_type="bias", regularization_
         return cnf
 
     chain = [build_cnf()]
-    if args.batch_norm:
-        bn_layers = [layers.MovingBatchNorm1d(z_dim, bn_lag=args.bn_lag)]
-        bn_chain = [layers.MovingBatchNorm1d(z_dim, bn_lag=args.bn_lag)]
-        for a, b in zip(chain, bn_layers):
-            bn_chain.append(a)
-            bn_chain.append(b)
-        chain = bn_chain
     model = layers.SequentialFlow(chain)
 
     set_cnf_options(args, model)
@@ -205,12 +195,10 @@ class AmortizedCNFVAE(VAE):
     def __init__(self, args):
         super(AmortizedCNFVAE, self).__init__(args)
 
-        # Initialize log-det-jacobian to zero
-        self.log_det_j = 0.
-
         # CNF model
-        self.cnfs = nn.ModuleList(
-            [build_amortized_model(args, args.z_size, self.amortization_type) for _ in range(args.num_blocks)])
+        self.cnfs = nn.ModuleList([
+            build_amortized_model(args, args.z_size, self.amortization_type) for _ in range(args.num_blocks)
+        ])
         self.q_am = self._amortized_layers(args)
         assert len(self.q_am) == args.num_blocks or len(self.q_am) == 0
 
