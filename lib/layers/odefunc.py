@@ -243,8 +243,9 @@ class ODEfunc(nn.Module):
         self._e = e
         self._num_evals.fill_(0)
 
-    def forward(self, t, y_and_logpy):
-        y, _ = y_and_logpy  # remove logpy
+    def forward(self, t, states):
+        assert len(states) >= 2
+        y = states[0]
 
         # increment num evals
         self._num_evals += 1
@@ -263,7 +264,7 @@ class ODEfunc(nn.Module):
         with torch.set_grad_enabled(True):
             y.requires_grad_(True)
             t.requires_grad_(True)
-            dy = self.diffeq(t, y)
+            dy = self.diffeq(t, y, *states[2:])
             # Hack for 2D data to use brute force divergence computation.
             if not self.training and dy.view(dy.shape[0], -1).shape[1] == 2:
                 divergence = divergence_bf(dy, y).view(batchsize, 1)
@@ -273,8 +274,7 @@ class ODEfunc(nn.Module):
             dy = dy - y
             divergence -= torch.ones_like(divergence) * torch.tensor(np.prod(y.shape[1:]), dtype=torch.float32
                                                                      ).to(divergence)
-
-        return dy, -divergence
+        return tuple([dy, -divergence] + [s_ * 0 for s_ in states[2:]])
 
 
 class AutoencoderODEfunc(nn.Module):
