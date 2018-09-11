@@ -30,8 +30,8 @@ parser.add_argument('--glow', type=eval, choices=[True, False], default=False)
 parser.add_argument('--niters', type=int, default=500001)
 parser.add_argument('--batch_size', type=int, default=100)
 parser.add_argument('--test_batch_size', type=int, default=1000)
-parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--weight_decay', type=float, default=1e-5)
+parser.add_argument('--lr', type=float, default=1e-4)
+parser.add_argument('--weight_decay', type=float, default=0)
 
 # Track quantities
 parser.add_argument('--l1int', type=float, default=None, help="int_t ||f||_1")
@@ -42,8 +42,8 @@ parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df
 parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
 
 parser.add_argument('--save', type=str, default='experiments/cnf')
-parser.add_argument('--viz_freq', type=int, default=100)
-parser.add_argument('--val_freq', type=int, default=100)
+parser.add_argument('--viz_freq', type=int, default=5000)
+parser.add_argument('--val_freq', type=int, default=1000)
 parser.add_argument('--log_freq', type=int, default=100)
 parser.add_argument('--gpu', type=int, default=0)
 args = parser.parse_args()
@@ -162,7 +162,7 @@ if __name__ == '__main__':
                 plt.figure(figsize=(9, 3))
                 visualize_transform(
                     p_samples, torch.randn, standard_normal_logprob, transform=sample_fn, inverse_transform=density_fn,
-                    samples=True, npts=100, device=device
+                    samples=True, npts=800, device=device
                 )
                 fig_filename = os.path.join(args.save, 'figs', '{:04d}.jpg'.format(itr))
                 utils.makedirs(os.path.dirname(fig_filename))
