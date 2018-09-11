@@ -64,6 +64,14 @@ def inf_train_gen(data, rng=None, batch_size=200):
 
         return 2 * rng.permutation(np.einsum("ti,tij->tj", features, rotations))
 
+    elif data == "2spirals":
+        n = np.sqrt(np.random.rand(batch_size // 2, 1)) * 540 * (2 * np.pi) / 360
+        d1x = -np.cos(n) * n + np.random.rand(batch_size // 2, 1) * 0.5
+        d1y = np.sin(n) * n + np.random.rand(batch_size // 2, 1) * 0.5
+        x = np.vstack((np.hstack((d1x, d1y)), np.hstack((-d1x, -d1y)))) / 3
+        x += np.random.randn(*x.shape) * 0.1
+        return x
+
     elif data == "line":
         x = rng.rand(batch_size) * 5 - 2.5
         y = x

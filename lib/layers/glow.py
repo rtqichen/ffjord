@@ -1,0 +1,30 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class GlowLayer(nn.Module):
+
+    def __init__(self, dim):
+        super(GlowLayer, self).__init__()
+        self.weight = nn.Parameter(torch.eye(dim)[torch.randperm(dim)])
+
+    def forward(self, x, logpx=None, reverse=False):
+
+        if not reverse:
+            y = F.linear(x, self.weight)
+            if logpx is None:
+                return y
+            else:
+                return y, logpx - self._logdetgrad.expand_as(logpx)
+
+        else:
+            y = F.linear(x, self.weight.inverse())
+            if logpx is None:
+                return y
+            else:
+                return y, logpx + self._logdetgrad.expand_as(logpx)
+
+    @property
+    def _logdetgrad(self):
+        return torch.log(torch.abs(torch.det(self.weight)))
