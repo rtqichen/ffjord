@@ -83,7 +83,7 @@ class AmortizedBiasODEnet(nn.Module):
         activation_fns = []
         hidden_shape = input_dim
 
-        for dim_out in hidden_dims + (input_dim,):
+        for dim_out in hidden_dims:
             layer = base_layer(hidden_shape, dim_out)
             layers.append(layer)
             activation_fns.append(NONLINEARITIES[nonlinearity])
