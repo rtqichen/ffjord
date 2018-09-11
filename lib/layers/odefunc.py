@@ -274,7 +274,7 @@ class ODEfunc(nn.Module):
             dy = dy - y
             divergence -= torch.ones_like(divergence) * torch.tensor(np.prod(y.shape[1:]), dtype=torch.float32
                                                                      ).to(divergence)
-        return tuple([dy, -divergence] + [s_ * 0 for s_ in states[2:]])
+        return tuple([dy, -divergence] + [torch.zeros_like(s_).requires_grad_(True) for s_ in states[2:]])
 
 
 class AutoencoderODEfunc(nn.Module):
