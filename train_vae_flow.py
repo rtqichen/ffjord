@@ -74,7 +74,7 @@ parser.add_argument('--max_beta', type=float, default=1., metavar='MB', help='ma
 parser.add_argument('--min_beta', type=float, default=0.0, metavar='MB', help='min beta for warm-up')
 parser.add_argument(
     '-f', '--flow', type=str, default='no_flow',
-    choices=['planar', 'iaf', 'householder', 'orthogonal', 'triangular', 'cnf', 'cnf_bias', 'cnf_hyper',
+    choices=['planar', 'iaf', 'householder', 'orthogonal', 'triangular', 'cnf', 'cnf_bias', 'cnf_hyper', 'cnf_rank_1',
              'no_flow'], help="""Type of flows to use, no flows can also be selected"""
 )
 parser.add_argument(
@@ -210,6 +210,8 @@ def run(args, kwargs):
         model = CNFVAE.AmortizedBiasCNFVAE(args)
     elif args.flow == 'cnf_hyper':
         model = CNFVAE.HypernetCNFVAE(args)
+    elif args.flow == 'cnf_rank_1':
+        model = CNFVAE.AmortizedRankOneCNFVAE(args)
     else:
         raise ValueError('Invalid flow choice')
 

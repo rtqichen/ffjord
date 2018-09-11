@@ -77,7 +77,6 @@ class AmortizedBiasODEnet(nn.Module):
         layers = []
         activation_fns = []
         hidden_shape = input_dim
-
         for dim_out in hidden_dims:
             layer = base_layer(hidden_shape, dim_out)
             layers.append(layer)
@@ -99,6 +98,60 @@ class AmortizedBiasODEnet(nn.Module):
             if l < len(self.layers) - 1:
                 dx = self.activation_fns[l](dx)
         dx_am_biases = torch.cat([dx, 0. * am_biases_0], 1)
+        return dx_am_biases
+
+
+class AmortizedRankOneODEnet(nn.Module):
+    def __init__(self, hidden_dims, input_dim, layer_type="concat", nonlinearity="softplus"):
+        super(AmortizedRankOneODEnet, self).__init__()
+        base_layer = {
+            "ignore": diffeq_layers.IgnoreLinear,
+            "hyper": diffeq_layers.HyperLinear,
+            "squash": diffeq_layers.SquashLinear,
+            "concat": diffeq_layers.ConcatLinear,
+            "concat_v2": diffeq_layers.ConcatLinear_v2,
+            "concatsquash": diffeq_layers.ConcatSquashLinear,
+            "blend": diffeq_layers.BlendLinear,
+            "concatcoord": diffeq_layers.ConcatLinear,
+        }[layer_type]
+        self.input_dim = input_dim
+
+        # build layers and add them
+        layers = []
+        activation_fns = []
+        hidden_shape = input_dim
+        self.output_dims = hidden_dims
+        self.input_dims = (input_dim,) + hidden_dims[:-1]
+        for dim_out in hidden_dims:
+            layer = base_layer(hidden_shape, dim_out)
+            layers.append(layer)
+            activation_fns.append(NONLINEARITIES[nonlinearity])
+            hidden_shape = dim_out
+
+        self.layers = nn.ModuleList(layers)
+        self.activation_fns = nn.ModuleList(activation_fns[:-1])
+
+    def _rank_1_bmm(self, x, u, v):
+        xu = torch.bmm(x.view(x.size(0), 1, x.size(1)), u.view(u.size(0), u.size(1), 1))  # (batch, 1, 1)
+        xuv = torch.bmm(xu, v.view(v.size(0), 1, v.size(1)))  # (batch, 1, out_dim)
+        return xuv[:, 0, :]
+
+    def forward(self, t, y_am_params):
+        y, am_params = y_am_params[:, :self.input_dim], y_am_params[:, self.input_dim:]
+        am_params_0 = am_params
+        dx = y
+        for l, (layer, in_dim, out_dim) in enumerate(zip(self.layers, self.input_dims, self.output_dims)):
+            this_u, am_params = am_params[:, :in_dim], am_params[:, in_dim:]
+            this_v, am_params = am_params[:, :out_dim], am_params[:, out_dim:]
+            this_bias, am_params = am_params[:, :out_dim], am_params[:, out_dim:]
+
+            xw = layer(t, dx)
+            xw_am = self._rank_1_bmm(dx, this_u, this_v)
+            dx = xw + xw_am + this_bias
+            # if not last layer, use nonlinearity
+            if l < len(self.layers) - 1:
+                dx = self.activation_fns[l](dx)
+        dx_am_biases = torch.cat([dx, 0. * am_params_0], 1)
         return dx_am_biases
 
 
@@ -157,8 +210,11 @@ class HyperODEnet(nn.Module):
 def build_amortized_model(args, z_dim, amortization_type="bias", regularization_fns=None):
 
     hidden_dims = get_hidden_dims(args)
-    diffeq_fn = {"bias": AmortizedBiasODEnet, "hyper": HyperODEnet}[amortization_type]
-
+    diffeq_fn = {
+        "bias": AmortizedBiasODEnet,
+        "hyper": HyperODEnet,
+        "rank_one": AmortizedRankOneODEnet
+    }[amortization_type]
     def build_cnf():
         diffeq = diffeq_fn(
             hidden_dims=hidden_dims,
@@ -250,6 +306,16 @@ class AmortizedBiasCNFVAE(AmortizedCNFVAE):
         hidden_dims = get_hidden_dims(args)
         bias_size = sum(hidden_dims)
         return nn.ModuleList([nn.Linear(self.h_size, bias_size) for _ in range(args.num_blocks)])
+
+
+class AmortizedRankOneCNFVAE(AmortizedCNFVAE):
+    amortization_type = "rank_one"
+
+    def _amortized_layers(self, args):
+        out_dims = get_hidden_dims(args)
+        in_dims = (out_dims[-1],) + out_dims[:-1]
+        params_size = sum(in_dims) + 2 * sum(out_dims)
+        return nn.ModuleList([nn.Linear(self.h_size, params_size) for _ in range(args.num_blocks)])
 
 
 class HypernetCNFVAE(AmortizedCNFVAE):
