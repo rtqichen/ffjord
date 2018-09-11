@@ -73,10 +73,12 @@ parser.add_argument(
 parser.add_argument('--max_beta', type=float, default=1., metavar='MB', help='max beta for warm-up')
 parser.add_argument('--min_beta', type=float, default=0.0, metavar='MB', help='min beta for warm-up')
 parser.add_argument(
-    '-f', '--flow', type=str, default='no_flow',
-    choices=['planar', 'iaf', 'householder', 'orthogonal', 'triangular', 'cnf', 'cnf_bias', 'cnf_hyper', 'cnf_rank_1',
-             'no_flow'], help="""Type of flows to use, no flows can also be selected"""
+    '-f', '--flow', type=str, default='no_flow', choices=[
+        'planar', 'iaf', 'householder', 'orthogonal', 'triangular', 'cnf', 'cnf_bias', 'cnf_hyper', 'cnf_rank_1',
+        'no_flow'
+    ], help="""Type of flows to use, no flows can also be selected"""
 )
+parser.add_argument('-r', '--rank', type=int, default=1)
 parser.add_argument(
     '-nf', '--num_flows', type=int, default=4, metavar='NUM_FLOWS',
     help='Number of flow layers, ignored in absence of flows'

@@ -5,7 +5,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from . import diffeq_layers
-from .diffeq_layers import diffeq_wrapper
 from .squeeze import squeeze, unsqueeze
 
 __all__ = ["ODEnet", "AutoencoderDiffEqNet", "ODEfunc", "AutoencoderODEfunc"]
@@ -228,7 +227,7 @@ class ODEfunc(nn.Module):
         super(ODEfunc, self).__init__()
         assert divergence_fn in ("brute_force", "approximate")
 
-        self.diffeq = diffeq_wrapper(diffeq)
+        self.diffeq = diffeq
         self.residual = residual
         self.rademacher = rademacher
 
@@ -264,6 +263,7 @@ class ODEfunc(nn.Module):
         with torch.set_grad_enabled(True):
             y.requires_grad_(True)
             t.requires_grad_(True)
+            for s_ in states[2:]: s_.requires_grad_(True)
             dy = self.diffeq(t, y, *states[2:])
             # Hack for 2D data to use brute force divergence computation.
             if not self.training and dy.view(dy.shape[0], -1).shape[1] == 2:

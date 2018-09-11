@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
-from train_misc import build_model_tabular, set_cnf_options
+from train_misc import build_model_tabular
 import lib.layers as layers
 from .VAE import VAE
 import lib.layers.diffeq_layers as diffeq_layers
 from lib.layers.odefunc import NONLINEARITIES
+
+from integrate import odeint_adjoint as odeint
 
 
 def get_hidden_dims(args):
@@ -86,9 +88,10 @@ class AmortizedBiasODEnet(nn.Module):
         self.layers = nn.ModuleList(layers)
         self.activation_fns = nn.ModuleList(activation_fns[:-1])
 
-    def forward(self, t, y_am_bias):
-        y, am_biases = y_am_bias[:, :self.input_dim], y_am_bias[:, self.input_dim:]
-        am_biases_0 = am_biases
+    def _unpack_params(self, params):
+        return [params]
+
+    def forward(self, t, y, am_biases):
         dx = y
         for l, layer in enumerate(self.layers):
             dx = layer(t, dx)
@@ -97,11 +100,11 @@ class AmortizedBiasODEnet(nn.Module):
             # if not last layer, use nonlinearity
             if l < len(self.layers) - 1:
                 dx = self.activation_fns[l](dx)
-        dx_am_biases = torch.cat([dx, 0. * am_biases_0], 1)
-        return dx_am_biases
+        return dx
 
 
 class AmortizedRankOneODEnet(nn.Module):
+
     def __init__(self, hidden_dims, input_dim, layer_type="concat", nonlinearity="softplus"):
         super(AmortizedRankOneODEnet, self).__init__()
         base_layer = {
@@ -131,14 +134,15 @@ class AmortizedRankOneODEnet(nn.Module):
         self.layers = nn.ModuleList(layers)
         self.activation_fns = nn.ModuleList(activation_fns[:-1])
 
+    def _unpack_params(self, params):
+        return [params]
+
     def _rank_1_bmm(self, x, u, v):
         xu = torch.bmm(x.view(x.size(0), 1, x.size(1)), u.view(u.size(0), u.size(1), 1))  # (batch, 1, 1)
         xuv = torch.bmm(xu, v.view(v.size(0), 1, v.size(1)))  # (batch, 1, out_dim)
         return xuv[:, 0, :]
 
-    def forward(self, t, y_am_params):
-        y, am_params = y_am_params[:, :self.input_dim], y_am_params[:, self.input_dim:]
-        am_params_0 = am_params
+    def forward(self, t, y, am_params):
         dx = y
         for l, (layer, in_dim, out_dim) in enumerate(zip(self.layers, self.input_dims, self.output_dims)):
             this_u, am_params = am_params[:, :in_dim], am_params[:, in_dim:]
@@ -151,8 +155,7 @@ class AmortizedRankOneODEnet(nn.Module):
             # if not last layer, use nonlinearity
             if l < len(self.layers) - 1:
                 dx = self.activation_fns[l](dx)
-        dx_am_biases = torch.cat([dx, 0. * am_params_0], 1)
-        return dx_am_biases
+        return dx
 
 
 class HyperODEnet(nn.Module):
@@ -184,7 +187,8 @@ class HyperODEnet(nn.Module):
             # split into weight and bias
             bias, weight_params = this_params[:, :out_dim], this_params[:, out_dim:]
             weight = weight_params.view(weight_params.size(0), in_dim + 1, out_dim)
-            layer_params.append((weight, bias))
+            layer_params.append(weight.clone())
+            layer_params.append(bias.clone())
         return layer_params
 
     def _layer(self, t, x, weight, bias):
@@ -194,55 +198,38 @@ class HyperODEnet(nn.Module):
         xw = torch.bmm(ttx, weight)[:, 0, :]  # (batch, out_dim)
         return xw + bias
 
-    def forward(self, t, y_am_params):
-        y, am_params = y_am_params[:, :self.input_dim], y_am_params[:, self.input_dim:]
-        layer_params = self._unpack_params(am_params)
+    def forward(self, t, y, *layer_params):
         dx = y
-        for l, (weight, bias) in enumerate(layer_params):
+        for l, (weight, bias) in enumerate(zip(layer_params[::2], layer_params[1::2])):
             dx = self._layer(t, dx, weight, bias)
             # if not last layer, use nonlinearity
             if l < len(layer_params) - 1:
                 dx = self.activation_fns[l](dx)
-        dx_am_biases = torch.cat([dx, 0. * am_params], 1)
-        return dx_am_biases
+        return dx
 
 
-def build_amortized_model(args, z_dim, amortization_type="bias", regularization_fns=None):
+def construct_amortized_odefunc(args, z_dim, amortization_type="bias"):
 
     hidden_dims = get_hidden_dims(args)
     diffeq_fn = {
         "bias": AmortizedBiasODEnet,
         "hyper": HyperODEnet,
-        "rank_one": AmortizedRankOneODEnet
+        "rank_1": AmortizedRankOneODEnet,
     }[amortization_type]
-    def build_cnf():
-        diffeq = diffeq_fn(
-            hidden_dims=hidden_dims,
-            input_dim=z_dim,
-            layer_type=args.layer_type,
-            nonlinearity=args.nonlinearity,
-        )
-        odefunc = layers.ODEfunc(
-            diffeq=diffeq,
-            divergence_fn=args.divergence_fn,
-            residual=args.residual,
-            rademacher=args.rademacher,
-        )
-        cnf = layers.CNF(
-            odefunc=odefunc,
-            T=args.time_length,
-            train_T=args.train_T,
-            regularization_fns=regularization_fns,
-            solver=args.solver,
-        )
-        return cnf
 
-    chain = [build_cnf()]
-    model = layers.SequentialFlow(chain)
-
-    set_cnf_options(args, model)
-
-    return model
+    diffeq = diffeq_fn(
+        hidden_dims=hidden_dims,
+        input_dim=z_dim,
+        layer_type=args.layer_type,
+        nonlinearity=args.nonlinearity,
+    )
+    odefunc = layers.ODEfunc(
+        diffeq=diffeq,
+        divergence_fn=args.divergence_fn,
+        residual=args.residual,
+        rademacher=args.rademacher,
+    )
+    return odefunc
 
 
 class AmortizedCNFVAE(VAE):
@@ -252,14 +239,20 @@ class AmortizedCNFVAE(VAE):
         super(AmortizedCNFVAE, self).__init__(args)
 
         # CNF model
-        self.cnfs = nn.ModuleList([
-            build_amortized_model(args, args.z_size, self.amortization_type) for _ in range(args.num_blocks)
+        self.odefuncs = nn.ModuleList([
+            construct_amortized_odefunc(args, args.z_size, self.amortization_type) for _ in range(args.num_blocks)
         ])
         self.q_am = self._amortized_layers(args)
         assert len(self.q_am) == args.num_blocks or len(self.q_am) == 0
 
         if args.cuda:
             self.cuda()
+
+        self.register_buffer('integration_times', torch.tensor([0.0, args.time_length]))
+
+        self.atol = args.atol
+        self.rtol = args.rtol
+        self.solver = args.solver
 
     def encode(self, x):
         """
@@ -275,10 +268,6 @@ class AmortizedCNFVAE(VAE):
         return mean_z, var_z, am_params
 
     def forward(self, x):
-        """
-        Forward pass with planar flows for the transformation z_0 -> z_1 -> ... -> z_k.
-        Log determinant is computed as log_det_j = N E_q_z0[\sum_k log |det dz_k/dz_k-1| ].
-        """
 
         self.log_det_j = 0.
 
@@ -289,10 +278,18 @@ class AmortizedCNFVAE(VAE):
 
         delta_logp = torch.zeros(x.shape[0], 1).to(x)
         z = z0
-        for cnf, am_param in zip(self.cnfs, am_params):
-            z_with_am = torch.cat([z, am_param], 1)  # add bias to ode state
-            z_with_am, delta_logp = cnf(z_with_am, delta_logp)  # run model forward
-            z = z_with_am[:, :z.size(1)]  # remove bias from ode state
+        for odefunc, am_param in zip(self.odefuncs, am_params):
+            am_param_unpacked = odefunc.diffeq._unpack_params(am_param)
+            odefunc.before_odeint()
+            states = odeint(
+                odefunc,
+                (z, delta_logp) + tuple(am_param_unpacked),
+                self.integration_times.to(z),
+                atol=self.atol,
+                rtol=self.rtol,
+                method=self.solver,
+            )
+            z, delta_logp = states[0][-1], states[1][-1]
 
         x_mean = self.decode(z)
 
@@ -309,7 +306,7 @@ class AmortizedBiasCNFVAE(AmortizedCNFVAE):
 
 
 class AmortizedRankOneCNFVAE(AmortizedCNFVAE):
-    amortization_type = "rank_one"
+    amortization_type = "rank_1"
 
     def _amortized_layers(self, args):
         out_dims = get_hidden_dims(args)
