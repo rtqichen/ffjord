@@ -239,7 +239,7 @@ class LyperODEnet(nn.Module):
             hidden_shape = dim_out
 
         self.layers = nn.ModuleList(layers)
-        self.activation_fns = nn.ModuleList(activation_fns[:-1])
+        self.activation_fns = nn.ModuleList(activation_fns)
 
     def _pack_inputs(self, t, x):
         tt = torch.ones_like(x[:, :1]) * t
