@@ -58,6 +58,7 @@ parser.add_argument('--JFrobint', type=float, default=None, help="int_t ||df/dx|
 parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df_i/dx_i||_F")
 parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
 
+parser.add_argument('--resume', type=str, default=None)
 parser.add_argument('--save', type=str, default='experiments/cnf')
 parser.add_argument('--val_freq', type=int, default=200)
 parser.add_argument('--log_freq', type=int, default=10)
@@ -73,6 +74,8 @@ if args.layer_type == "blend":
     args.train_T = False
 
 logger.info(args)
+
+test_batch_size = args.test_batch_size if args.test_batch_size else args.batch_size
 
 
 def batch_iter(X, batch_size=args.batch_size, shuffle=False):
@@ -165,6 +168,10 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         model = torch.nn.DataParallel(model).cuda()
 
+    if args.resume is not None:
+        checkpt = torch.load(args.resume)
+        model.load_state_dict(checkpt['state_dict'])
+
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
 
@@ -237,7 +244,7 @@ if __name__ == '__main__':
                 with torch.no_grad():
                     val_loss = utils.AverageMeter()
                     val_nfe = utils.AverageMeter()
-                    for x in batch_iter(data.val.x, batch_size=args.test_batch_size):
+                    for x in batch_iter(data.val.x, batch_size=test_batch_size):
                         x = cvt(x)
                         val_loss.update(compute_loss(x, model).item(), x.shape[0])
                         val_nfe.update(count_nfe(model))
@@ -270,7 +277,7 @@ if __name__ == '__main__':
     with torch.no_grad():
         test_loss = utils.AverageMeter()
         test_nfe = utils.AverageMeter()
-        for x in batch_iter(data.tst.x):
+        for x in batch_iter(data.tst.x, batch_size=test_batch_size):
             x = cvt(x)
             test_loss.update(compute_loss(x, model).item(), x.shape[0])
             test_nfe.update(count_nfe(model))
