@@ -218,7 +218,7 @@ if __name__ == '__main__':
                     'Iter {:06d} | Epoch {:.2f} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | '
                     'NFE Forward {:.0f}({:.1f}) | NFE Backward {:.0f}({:.1f}) | CNF Time {:.4f}({:.4f})'.format(
                         itr,
-                        float(itr) / (data.trn.x.shape[0] / args.batch_size), time_meter.val, time_meter.avg,
+                        float(itr) / (data.trn.x.shape[0] / float(args.batch_size)), time_meter.val, time_meter.avg,
                         loss_meter.val, loss_meter.avg, nfef_meter.val, nfef_meter.avg, nfeb_meter.val, nfeb_meter.avg,
                         tt_meter.val, tt_meter.avg
                     )
