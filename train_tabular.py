@@ -3,7 +3,6 @@ import os
 import time
 
 import torch
-from torch.utils.data import DataLoader
 
 import lib.utils as utils
 import lib.layers.odefunc as odefunc
@@ -71,8 +70,41 @@ logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.p
 if args.layer_type == "blend":
     logger.info("!! Setting time_length from None to 1.0 due to use of Blend layers.")
     args.time_length = 1.0
+    args.train_T = False
 
 logger.info(args)
+
+
+def batch_iter(X, batch_size=args.batch_size, shuffle=False):
+    """
+    X: feature tensor (shape: num_instances x num_features)
+    """
+    if shuffle:
+        idxs = torch.randperm(X.shape[0])
+    else:
+        idxs = torch.arange(X.shape[0])
+    if X.is_cuda:
+        idxs = idxs.cuda()
+    for batch_idxs in idxs.split(batch_size):
+        yield X[batch_idxs]
+
+
+ndecs = 0
+
+
+def update_lr(optimizer, n_vals_without_improvement):
+    global ndecs
+    if ndecs == 0 and n_vals_without_improvement > args.early_stopping // 3:
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = args.lr / 10
+        ndecs = 1
+    elif ndecs == 1 and n_vals_without_improvement > args.early_stopping // 3 * 2:
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = args.lr / 100
+        ndecs = 2
+    else:
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = args.lr / 10**ndecs
 
 
 def load_data(name):
@@ -118,18 +150,20 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     cvt = lambda x: x.type(torch.float32).to(device, non_blocking=True)
 
-    data = load_data(args.data)
-    train_loader = DataLoader(data.trn.x, batch_size=args.batch_size, shuffle=True)
+    logger.info('Using {} GPUs.'.format(torch.cuda.device_count()))
 
-    test_batch_size = args.test_batch_size if args.test_batch_size is not None else args.batch_size
-    val_loader = DataLoader(data.val.x, batch_size=test_batch_size, shuffle=False)
-    test_loader = DataLoader(data.tst.x, batch_size=test_batch_size, shuffle=False)
+    data = load_data(args.data)
+    data.trn.x = torch.from_numpy(data.trn.x)
+    data.val.x = torch.from_numpy(data.val.x)
+    data.tst.x = torch.from_numpy(data.tst.x)
 
     args.dims = '-'.join([str(args.hdim_factor * data.n_dims)] * args.nhidden)
 
     regularization_fns, regularization_coeffs = create_regularization_fns(args)
     model = build_model_tabular(args, data.n_dims, regularization_fns).to(device)
     set_cnf_options(args, model)
+    if torch.cuda.is_available():
+        model = torch.nn.DataParallel(model).cuda()
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
@@ -147,80 +181,87 @@ if __name__ == '__main__':
     n_vals_without_improvement = 0
     end = time.time()
     model.train()
-    for itr, x in enumerate(utils.inf_generator(train_loader)):
-        if args.early_stopping > 0 and n_vals_without_improvement > args.early_stopping:
-            break
+    while True:
+        for x in batch_iter(data.trn.x, shuffle=True):
+            if args.early_stopping > 0 and n_vals_without_improvement > args.early_stopping:
+                break
 
-        optimizer.zero_grad()
+            optimizer.zero_grad()
 
-        x = cvt(x)
-        loss = compute_loss(x, model)
-        loss_meter.update(loss.item())
+            x = cvt(x)
+            loss = compute_loss(x, model)
+            loss_meter.update(loss.item())
 
-        if len(regularization_coeffs) > 0:
-            reg_states = get_regularization(model, regularization_coeffs)
-            reg_loss = sum(
-                reg_state * coeff for reg_state, coeff in zip(reg_states, regularization_coeffs) if coeff != 0
-            )
-            loss = loss + reg_loss
-
-        total_time = count_total_time(model)
-        nfe_forward = count_nfe(model)
-
-        loss.backward()
-        optimizer.step()
-
-        nfe_total = count_nfe(model)
-        nfe_backward = nfe_total - nfe_forward
-        nfef_meter.update(nfe_forward)
-        nfeb_meter.update(nfe_backward)
-
-        time_meter.update(time.time() - end)
-        tt_meter.update(total_time)
-
-        if itr % args.log_freq == 0:
-            log_message = (
-                'Iter {:06d} | Epoch {:.2f} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | NFE Forward {:.0f}({:.1f})'
-                ' | NFE Backward {:.0f}({:.1f}) | CNF Time {:.4f}({:.4f})'.format(
-                    itr, itr / len(train_loader), time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg,
-                    nfef_meter.val, nfef_meter.avg, nfeb_meter.val, nfeb_meter.avg, tt_meter.val, tt_meter.avg
-                )
-            )
             if len(regularization_coeffs) > 0:
-                log_message = append_regularization_to_log(log_message, regularization_fns, reg_states)
-
-            logger.info(log_message)
-        itr += 1
-        end = time.time()
-
-        # Validation loop.
-        if itr % args.val_freq == 0:
-            model.eval()
-            start_time = time.time()
-            with torch.no_grad():
-                val_loss = utils.AverageMeter()
-                val_nfe = utils.AverageMeter()
-                for _, x in enumerate(val_loader):
-                    x = cvt(x)
-                    val_loss.update(compute_loss(x, model).item(), x.shape[0])
-                    val_nfe.update(count_nfe(model))
-
-                if val_loss.avg < best_loss:
-                    best_loss = val_loss.avg
-                    utils.makedirs(args.save)
-                    torch.save({
-                        'args': args,
-                        'state_dict': model.state_dict(),
-                    }, os.path.join(args.save, 'checkpt.pth'))
-                    n_vals_without_improvement = 0
-                else:
-                    n_vals_without_improvement += 1
-
-                log_message = '[VAL] Iter {:06d} | Val Loss {:.6f} | NFE {:.0f} | NoImproveEpochs {:02d}/{:02d}'.format(
-                    itr, val_loss.avg, val_nfe.avg, n_vals_without_improvement, args.early_stopping
+                reg_states = get_regularization(model, regularization_coeffs)
+                reg_loss = sum(
+                    reg_state * coeff for reg_state, coeff in zip(reg_states, regularization_coeffs) if coeff != 0
                 )
+                loss = loss + reg_loss
+
+            total_time = count_total_time(model)
+            nfe_forward = count_nfe(model)
+
+            loss.backward()
+            optimizer.step()
+
+            nfe_total = count_nfe(model)
+            nfe_backward = nfe_total - nfe_forward
+            nfef_meter.update(nfe_forward)
+            nfeb_meter.update(nfe_backward)
+
+            time_meter.update(time.time() - end)
+            tt_meter.update(total_time)
+
+            if itr % args.log_freq == 0:
+                log_message = (
+                    'Iter {:06d} | Epoch {:.2f} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | '
+                    'NFE Forward {:.0f}({:.1f}) | NFE Backward {:.0f}({:.1f}) | CNF Time {:.4f}({:.4f})'.format(
+                        itr,
+                        float(itr) / (data.trn.x.shape[0] / args.batch_size), time_meter.val, time_meter.avg,
+                        loss_meter.val, loss_meter.avg, nfef_meter.val, nfef_meter.avg, nfeb_meter.val, nfeb_meter.avg,
+                        tt_meter.val, tt_meter.avg
+                    )
+                )
+                if len(regularization_coeffs) > 0:
+                    log_message = append_regularization_to_log(log_message, regularization_fns, reg_states)
+
                 logger.info(log_message)
-            model.train()
+            itr += 1
+            end = time.time()
+
+            # Validation loop.
+            if itr % args.val_freq == 0:
+                model.eval()
+                start_time = time.time()
+                with torch.no_grad():
+                    val_loss = utils.AverageMeter()
+                    val_nfe = utils.AverageMeter()
+                    for x in batch_iter(data.val.x, batch_size=args.test_batch_size):
+                        x = cvt(x)
+                        val_loss.update(compute_loss(x, model).item(), x.shape[0])
+                        val_nfe.update(count_nfe(model))
+
+                    if val_loss.avg < best_loss:
+                        best_loss = val_loss.avg
+                        utils.makedirs(args.save)
+                        torch.save({
+                            'args': args,
+                            'state_dict': model.state_dict(),
+                        }, os.path.join(args.save, 'checkpt.pth'))
+                        n_vals_without_improvement = 0
+                    else:
+                        n_vals_without_improvement += 1
+                    update_lr(optimizer, n_vals_without_improvement)
+
+                    log_message = (
+                        '[VAL] Iter {:06d} | Val Loss {:.6f} | NFE {:.0f} | '
+                        'NoImproveEpochs {:02d}/{:02d}'.format(
+                            itr, val_loss.avg, val_nfe.avg, n_vals_without_improvement, args.early_stopping
+                        )
+                    )
+                    logger.info(log_message)
+                model.train()
 
     logger.info('Training has finished.')
     model = restore_model(model, os.path.join(args.save, 'checkpt.pth')).to(device)
@@ -229,7 +270,7 @@ if __name__ == '__main__':
     with torch.no_grad():
         test_loss = utils.AverageMeter()
         test_nfe = utils.AverageMeter()
-        for _, x in enumerate(test_loader):
+        for x in batch_iter(data.tst.x):
             x = cvt(x)
             test_loss.update(compute_loss(x, model).item(), x.shape[0])
             test_nfe.update(count_nfe(model))
