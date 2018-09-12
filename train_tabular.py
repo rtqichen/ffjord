@@ -165,8 +165,6 @@ if __name__ == '__main__':
     regularization_fns, regularization_coeffs = create_regularization_fns(args)
     model = build_model_tabular(args, data.n_dims, regularization_fns).to(device)
     set_cnf_options(args, model)
-    if torch.cuda.is_available():
-        model = torch.nn.DataParallel(model).cuda()
 
     if args.resume is not None:
         checkpt = torch.load(args.resume)
