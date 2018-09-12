@@ -188,8 +188,8 @@ class HyperODEnet(nn.Module):
             # split into weight and bias
             bias, weight_params = this_params[:, :out_dim], this_params[:, out_dim:]
             weight = weight_params.view(weight_params.size(0), in_dim + 1, out_dim)
-            layer_params.append(weight.clone())
-            layer_params.append(bias.clone())
+            layer_params.append(weight)
+            layer_params.append(bias)
         return layer_params
 
     def _layer(self, t, x, weight, bias):
@@ -209,6 +209,63 @@ class HyperODEnet(nn.Module):
         return dx
 
 
+class LyperODEnet(nn.Module):
+
+    def __init__(self, hidden_dims, input_dim, layer_type="concat", nonlinearity="softplus"):
+        super(LyperODEnet, self).__init__()
+        base_layer = {
+            "ignore": diffeq_layers.IgnoreLinear,
+            "hyper": diffeq_layers.HyperLinear,
+            "squash": diffeq_layers.SquashLinear,
+            "concat": diffeq_layers.ConcatLinear,
+            "concat_v2": diffeq_layers.ConcatLinear_v2,
+            "concatsquash": diffeq_layers.ConcatSquashLinear,
+            "blend": diffeq_layers.BlendLinear,
+            "concatcoord": diffeq_layers.ConcatLinear,
+        }[layer_type]
+        self.input_dim = input_dim
+
+        # build layers and add them
+        layers = []
+        activation_fns = []
+        hidden_shape = input_dim
+        self.dims = (input_dim,) + hidden_dims
+        self.output_dims = hidden_dims
+        self.input_dims = (input_dim,) + hidden_dims[:-1]
+        for dim_out in hidden_dims[:-1]:
+            layer = base_layer(hidden_shape, dim_out)
+            layers.append(layer)
+            activation_fns.append(NONLINEARITIES[nonlinearity])
+            hidden_shape = dim_out
+
+        self.layers = nn.ModuleList(layers)
+        self.activation_fns = nn.ModuleList(activation_fns[:-1])
+
+    def _pack_inputs(self, t, x):
+        tt = torch.ones_like(x[:, :1]) * t
+        ttx = torch.cat([tt, x], 1)
+        return ttx
+
+    def _unpack_params(self, params):
+        return [params]
+
+    def _am_layer(self, t, x, weight, bias):
+        # weights is (batch, in_dim + 1, out_dim)
+        ttx = self._pack_inputs(t, x)  # (batch, in_dim + 1)
+        ttx = ttx.view(ttx.size(0), 1, ttx.size(1))  # (batch, 1, in_dim + 1)
+        xw = torch.bmm(ttx, weight)[:, 0, :]  # (batch, out_dim)
+        return xw + bias
+
+    def forward(self, t, x, am_params):
+        dx = x
+        for layer, act in zip(self.layers, self.activation_fns):
+            dx = act(layer(t, dx))
+        bias, weight_params = am_params[:, :self.dims[-1]], am_params[:, self.dims[-1]:]
+        weight = weight_params.view(weight_params.size(0), self.dims[-2] + 1, self.dims[-1])
+        dx = self._am_layer(t, dx, weight, bias)
+        return dx
+
+
 def construct_amortized_odefunc(args, z_dim, amortization_type="bias"):
 
     hidden_dims = get_hidden_dims(args)
@@ -222,6 +279,13 @@ def construct_amortized_odefunc(args, z_dim, amortization_type="bias"):
         )
     elif amortization_type == "hyper":
         diffeq = HyperODEnet(
+            hidden_dims=hidden_dims,
+            input_dim=z_dim,
+            layer_type=args.layer_type,
+            nonlinearity=args.nonlinearity,
+        )
+    elif amortization_type == "lyper":
+        diffeq = LyperODEnet(
             hidden_dims=hidden_dims,
             input_dim=z_dim,
             layer_type=args.layer_type,
@@ -336,4 +400,13 @@ class HypernetCNFVAE(AmortizedCNFVAE):
         assert args.layer_type == "concat", "hypernets only support concat layers at the moment"
         weight_dims = [concat_layer_num_params(in_dim, out_dim) for in_dim, out_dim in zip(input_dims, hidden_dims)]
         weight_size = sum(weight_dims)
+        return nn.ModuleList([nn.Linear(self.h_size, weight_size) for _ in range(args.num_blocks)])
+
+
+class LypernetCNFVAE(AmortizedCNFVAE):
+    amortization_type = "lyper"
+
+    def _amortized_layers(self, args):
+        dims = (args.z_size,) + get_hidden_dims(args)
+        weight_size = concat_layer_num_params(dims[-2], dims[-1])
         return nn.ModuleList([nn.Linear(self.h_size, weight_size) for _ in range(args.num_blocks)])

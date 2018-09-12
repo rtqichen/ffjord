@@ -75,7 +75,7 @@ parser.add_argument('--min_beta', type=float, default=0.0, metavar='MB', help='m
 parser.add_argument(
     '-f', '--flow', type=str, default='no_flow', choices=[
         'planar', 'iaf', 'householder', 'orthogonal', 'triangular', 'cnf', 'cnf_bias', 'cnf_hyper', 'cnf_rank',
-        'no_flow'
+        'cnf_lyper', 'no_flow'
     ], help="""Type of flows to use, no flows can also be selected"""
 )
 parser.add_argument('-r', '--rank', type=int, default=1)
@@ -151,7 +151,7 @@ def run(args, kwargs):
     args.model_signature = args.model_signature.replace(':', '_')
 
     snapshots_path = os.path.join(args.out_dir, 'vae_' + args.dataset + '_')
-    snap_dir = snapshots_path + args.flow + '_' + str(args.gpu_num)
+    snap_dir = snapshots_path + args.flow
 
     if args.flow != 'no_flow':
         snap_dir += '_' + 'num_flows_' + str(args.num_flows)
@@ -167,6 +167,10 @@ def run(args, kwargs):
         snap_dir = snap_dir + '_' + 'kernelsize_' + str(args.kernel_size)
     elif args.flow == 'mixed':
         snap_dir = snap_dir + '_' + 'num_householder_' + str(args.num_householder)
+    elif args.flow == 'cnf_rank':
+        snap_dir = snap_dir + '_rank_' + str(args.rank) + '_' + args.dims + '_num_blocks_' + str(args.num_blocks)
+    elif 'cnf' in args.flow:
+        snap_dir = snap_dir + '_' + args.dims + '_num_blocks_' + str(args.num_blocks)
 
     snap_dir = snap_dir + '__' + args.model_signature + '/'
 
@@ -212,6 +216,8 @@ def run(args, kwargs):
         model = CNFVAE.AmortizedBiasCNFVAE(args)
     elif args.flow == 'cnf_hyper':
         model = CNFVAE.HypernetCNFVAE(args)
+    elif args.flow == 'cnf_lyper':
+        model = CNFVAE.LypernetCNFVAE(args)
     elif args.flow == 'cnf_rank':
         model = CNFVAE.AmortizedLowRankCNFVAE(args)
     else:
