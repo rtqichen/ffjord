@@ -152,7 +152,14 @@ def get_dataset(args):
     elif args.data == "cifar10":
         im_dim = 3
         im_size = 32 if args.imagesize is None else args.imagesize
-        train_set = dset.CIFAR10(root="./data", train=True, transform=trans(im_size), download=True)
+        train_set = dset.CIFAR10(
+            root="./data", train=True, transform=tforms.Compose([
+                tforms.Resize(im_size),
+                tforms.RandomHorizontalFlip(),
+                tforms.ToTensor(),
+                add_noise,
+            ]), download=True
+        )
         test_set = dset.CIFAR10(root="./data", train=False, transform=trans(im_size), download=True)
     elif args.dataset == 'celeba':
         im_dim = 3
