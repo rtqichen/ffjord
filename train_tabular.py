@@ -33,8 +33,8 @@ parser.add_argument("--divergence_fn", type=str, default="approximate", choices=
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=odefunc.NONLINEARITIES)
 
 parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
-parser.add_argument('--atol', type=float, default=1e-8)
-parser.add_argument('--rtol', type=float, default=1e-6)
+parser.add_argument('--atol', type=float, default=1e-5)
+parser.add_argument('--rtol', type=float, default=1e-5)
 parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
 
 parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
