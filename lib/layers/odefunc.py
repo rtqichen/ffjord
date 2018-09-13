@@ -10,11 +10,32 @@ from .squeeze import squeeze, unsqueeze
 __all__ = ["ODEnet", "AutoencoderDiffEqNet", "ODEfunc", "AutoencoderODEfunc"]
 
 
-def divergence_bf(dx, y, **unused_kwargs):
-    sum_diag = 0.
-    for i in range(y.shape[1]):
-        sum_diag += torch.autograd.grad(dx[:, i].sum(), y, create_graph=True)[0].contiguous()[:, i].contiguous()
-    return sum_diag.contiguous()
+def divergence_bf(f, y, **unused_kwargs):
+    jac = _get_minibatch_jacobian(f, y)
+    diagonal = jac.view(jac.shape[0], -1)[:, ::jac.shape[1]]
+    return torch.sum(diagonal, 1)
+
+
+def _get_minibatch_jacobian(y, x, create_graph=False):
+    """Computes the Jacobian of y wrt x assuming minibatch-mode.
+
+    Args:
+      y: (N, ...) with a total of D_y elements in ...
+      x: (N, ...) with a total of D_x elements in ...
+    Returns:
+      The minibatch Jacobian matrix of shape (N, D_y, D_x)
+    """
+    assert y.shape[0] == x.shape[0]
+    y = y.view(y.shape[0], -1)
+
+    # Compute Jacobian row by row.
+    jac = []
+    for j in range(y.shape[1]):
+        dy_j_dx = torch.autograd.grad(y[:, j], x, torch.ones_like(y[:, j]), retain_graph=True,
+                                      create_graph=True)[0].view(x.shape[0], -1)
+        jac.append(torch.unsqueeze(dy_j_dx, 1))
+    jac = torch.cat(jac, 1)
+    return jac
 
 
 def divergence_approx(f, y, e=None):
