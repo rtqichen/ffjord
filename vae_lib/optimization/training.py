@@ -7,7 +7,7 @@ from vae_lib.utils.visual_evaluation import plot_reconstructions
 from vae_lib.utils.log_likelihood import calculate_likelihood
 
 import numpy as np
-from train_misc import count_nfe
+from train_misc import count_nfe, override_divergence_fn
 
 
 def train(epoch, train_loader, model, opt, args, logger):
@@ -88,7 +88,7 @@ def train(epoch, train_loader, model, opt, args, logger):
     return train_loss
 
 
-def evaluate(data_loader, model, args, logger, testing=False, file=None, epoch=0):
+def evaluate(data_loader, model, args, logger, testing=False, epoch=0):
     model.eval()
     loss = 0.
     batch_idx = 0
@@ -122,8 +122,14 @@ def evaluate(data_loader, model, args, logger, testing=False, file=None, epoch=0
     loss /= len(data_loader)
     bpd /= len(data_loader)
 
+    if testing:
+        logger.info('====> Test set loss: {:.4f}'.format(loss))
+
     # Compute log-likelihood
     if testing:
+        if 'cnf' in args.flow:
+            override_divergence_fn(model, "brute_force")
+
         with torch.no_grad():
             test_data = data_loader.dataset.tensors[0]
 
@@ -135,9 +141,12 @@ def evaluate(data_loader, model, args, logger, testing=False, file=None, epoch=0
             model.eval()
 
             if args.dataset == 'caltech':
-                log_likelihood, nll_bpd = calculate_likelihood(test_data, model, args, logger, S=2000, MB=1000)
+                log_likelihood, nll_bpd = calculate_likelihood(test_data, model, args, logger, S=2000, MB=2000)
             else:
-                log_likelihood, nll_bpd = calculate_likelihood(test_data, model, args, logger, S=5000, MB=1000)
+                log_likelihood, nll_bpd = calculate_likelihood(test_data, model, args, logger, S=5000, MB=5000)
+
+        if 'cnf' in args.flow:
+            override_divergence_fn(model, args.divergence_fn)
     else:
         log_likelihood = None
         nll_bpd = None
@@ -145,22 +154,15 @@ def evaluate(data_loader, model, args, logger, testing=False, file=None, epoch=0
     if args.input_type in ['multinomial']:
         bpd = loss / (np.prod(args.input_size) * np.log(2.))
 
-    if file is None:
-        if testing:
-            logger.info('====> Test set loss: {:.4f}'.format(loss))
-            logger.info('====> Test set log-likelihood: {:.4f}'.format(log_likelihood))
+    if testing:
+        logger.info('====> Test set log-likelihood: {:.4f}'.format(log_likelihood))
 
-            if args.input_type != 'binary':
-                logger.info('====> Test set bpd (elbo): {:.4f}'.format(bpd))
-                logger.info(
-                    '====> Test set bpd (log-likelihood): {:.4f}'.
-                    format(log_likelihood / (np.prod(args.input_size) * np.log(2.)))
-                )
-
-        else:
-            logger.info('====> Validation set loss: {:.4f}'.format(loss))
-            if args.input_type in ['multinomial']:
-                logger.info('====> Validation set bpd: {:.4f}'.format(bpd))
+        if args.input_type != 'binary':
+            logger.info('====> Test set bpd (elbo): {:.4f}'.format(bpd))
+            logger.info(
+                '====> Test set bpd (log-likelihood): {:.4f}'.
+                format(log_likelihood / (np.prod(args.input_size) * np.log(2.)))
+            )
 
     if not testing:
         return loss, bpd

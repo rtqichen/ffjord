@@ -4,6 +4,7 @@ import math
 import lib.layers.wrappers.cnf_regularization as reg_lib
 import lib.spectral_norm as spectral_norm
 import lib.layers as layers
+from lib.layers.odefunc import divergence_bf, divergence_approx
 
 
 def standard_normal_logprob(z):
@@ -34,6 +35,18 @@ def set_cnf_options(args, model):
         if isinstance(module, layers.ODEfunc):
             module.rademacher = args.rademacher
             module.residual = args.residual
+
+    model.apply(_set)
+
+
+def override_divergence_fn(model, divergence_fn):
+
+    def _set(module):
+        if isinstance(module, layers.ODEfunc):
+            if divergence_fn == "brute_force":
+                module.divergence_fn = divergence_bf
+            elif divergence_fn == "approximate":
+                module.divergence_fn = divergence_approx
 
     model.apply(_set)
 

@@ -1,4 +1,5 @@
 from __future__ import print_function
+import time
 import numpy as np
 from scipy.misc import logsumexp
 from vae_lib.optimization.loss import calculate_loss_array
@@ -19,9 +20,8 @@ def calculate_likelihood(X, model, args, logger, S=5000, MB=500):
         R = S // MB
         S = MB
 
+    end = time.time()
     for j in range(N_test):
-        if j % 100 == 0:
-            logger.info('Progress: {:.2f}%'.format(j / (1. * N_test) * 100))
 
         x_single = X[j].unsqueeze(0)
 
@@ -41,6 +41,10 @@ def calculate_likelihood(X, model, args, logger, S=5000, MB=500):
         a = np.reshape(a, (a.shape[0] * a.shape[1], 1))
         likelihood_x = logsumexp(a)
         likelihood_test.append(likelihood_x - np.log(len(a)))
+
+        if j % 1 == 0:
+            logger.info('Progress: {:.2f}% | Time: {:.4f}'.format(j / (1. * N_test) * 100, time.time() - end))
+        end = time.time()
 
     likelihood_test = np.array(likelihood_test)
 
