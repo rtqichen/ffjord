@@ -54,6 +54,7 @@ def sample_gaussian_like(y):
 
 
 class Swish(nn.Module):
+
     def __init__(self):
         super(Swish, self).__init__()
         self.beta = nn.Parameter(torch.tensor(1.0))
@@ -63,6 +64,7 @@ class Swish(nn.Module):
 
 
 class Lambda(nn.Module):
+
     def __init__(self, f):
         super(Lambda, self).__init__()
         self.f = f
@@ -244,10 +246,12 @@ class AutoencoderDiffEqNet(nn.Module):
 
 
 class ODEfunc(nn.Module):
+
     def __init__(self, diffeq, divergence_fn="approximate", residual=False, rademacher=False):
         super(ODEfunc, self).__init__()
         assert divergence_fn in ("brute_force", "approximate")
 
+        # self.diffeq = diffeq_layers.wrappers.diffeq_wrapper(diffeq)
         self.diffeq = diffeq
         self.residual = residual
         self.rademacher = rademacher
@@ -284,7 +288,8 @@ class ODEfunc(nn.Module):
         with torch.set_grad_enabled(True):
             y.requires_grad_(True)
             t.requires_grad_(True)
-            for s_ in states[2:]: s_.requires_grad_(True)
+            for s_ in states[2:]:
+                s_.requires_grad_(True)
             dy = self.diffeq(t, y, *states[2:])
             # Hack for 2D data to use brute force divergence computation.
             if not self.training and dy.view(dy.shape[0], -1).shape[1] == 2:
@@ -299,6 +304,7 @@ class ODEfunc(nn.Module):
 
 
 class AutoencoderODEfunc(nn.Module):
+
     def __init__(self, autoencoder_diffeq, divergence_fn="approximate", residual=False, rademacher=False):
         assert divergence_fn in ("approximate"), "Only approximate divergence supported at the moment. (TODO)"
         assert isinstance(autoencoder_diffeq, AutoencoderDiffEqNet)
