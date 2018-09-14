@@ -296,6 +296,6 @@ if __name__ == '__main__':
             x = cvt(x)
             test_loss.update(compute_loss(x, model).item(), x.shape[0])
             test_nfe.update(count_nfe(model))
-            logger.info('Progress: {:.2f}%'.format(itr / (data.tst.x.shape[0] / test_batch_size)))
+            logger.info('Progress: {:.2f}%'.format(itr / (data.tst.x.shape[0] / test_batch_size * 100)))
         log_message = '[TEST] Iter {:06d} | Test Loss {:.6f} | NFE {:.0f}'.format(itr, test_loss.avg, test_nfe.avg)
         logger.info(log_message)
