@@ -66,7 +66,7 @@ def load_freyfaces(args, **kwargs):
 
     # start processing
     with open('data/Freyfaces/freyfaces.pkl', 'rb') as f:
-        data = pickle.load(f, encoding="latin1")
+        data = pickle.load(f, encoding="latin1")[0]
 
     data = data / 255.
 
