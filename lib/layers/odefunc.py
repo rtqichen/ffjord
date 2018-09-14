@@ -10,10 +10,17 @@ from .squeeze import squeeze, unsqueeze
 __all__ = ["ODEnet", "AutoencoderDiffEqNet", "ODEfunc", "AutoencoderODEfunc"]
 
 
-def divergence_bf(f, y, **unused_kwargs):
-    jac = _get_minibatch_jacobian(f, y)
-    diagonal = jac.view(jac.shape[0], -1)[:, ::jac.shape[1]]
-    return torch.sum(diagonal, 1)
+def divergence_bf(dx, y, **unused_kwargs):
+    sum_diag = 0.
+    for i in range(y.shape[1]):
+        sum_diag += torch.autograd.grad(dx[:, i].sum(), y, create_graph=True)[0].contiguous()[:, i].contiguous()
+    return sum_diag.contiguous()
+
+
+# def divergence_bf(f, y, **unused_kwargs):
+#     jac = _get_minibatch_jacobian(f, y)
+#     diagonal = jac.view(jac.shape[0], -1)[:, ::jac.shape[1]]
+#     return torch.sum(diagonal, 1)
 
 
 def _get_minibatch_jacobian(y, x, create_graph=False):
