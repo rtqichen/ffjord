@@ -13,7 +13,7 @@ import datasets
 from train_misc import standard_normal_logprob
 from train_misc import set_cnf_options, count_nfe, count_parameters, count_total_time
 from train_misc import create_regularization_fns, get_regularization, append_regularization_to_log
-from train_misc import build_model_tabular
+from train_misc import build_model_tabular, override_divergence_fn
 
 SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
@@ -289,6 +289,8 @@ if __name__ == '__main__':
     logger.info('Evaluating model on test set.')
     model.eval()
 
+    override_divergence_fn(model, "brute_force")
+
     with torch.no_grad():
         test_loss = utils.AverageMeter()
         test_nfe = utils.AverageMeter()
@@ -296,6 +298,6 @@ if __name__ == '__main__':
             x = cvt(x)
             test_loss.update(compute_loss(x, model).item(), x.shape[0])
             test_nfe.update(count_nfe(model))
-            logger.info('Progress: {:.2f}%'.format(itr / (data.tst.x.shape[0] / test_batch_size * 100)))
+            logger.info('Progress: {:.2f}%'.format(100. * itr / (data.tst.x.shape[0] / test_batch_size)))
         log_message = '[TEST] Iter {:06d} | Test Loss {:.6f} | NFE {:.0f}'.format(itr, test_loss.avg, test_nfe.avg)
         logger.info(log_message)
