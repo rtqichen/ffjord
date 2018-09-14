@@ -66,7 +66,7 @@ def load_freyfaces(args, **kwargs):
 
     # start processing
     with open('data/Freyfaces/freyfaces.pkl', 'rb') as f:
-        data = pickle.load(f)[0]
+        data = pickle.load(f, encoding="latin1")
 
     data = data / 255.
 
@@ -97,7 +97,6 @@ def load_freyfaces(args, **kwargs):
 
     test = data_utils.TensorDataset(torch.from_numpy(x_test).float(), torch.from_numpy(y_test))
     test_loader = data_utils.DataLoader(test, batch_size=args.batch_size, shuffle=False, **kwargs)
-
     return train_loader, val_loader, test_loader, args
 
 

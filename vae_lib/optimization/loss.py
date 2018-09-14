@@ -221,7 +221,14 @@ def nll_loss(input, target, weight=None, size_average=True, ignore_index=-100, r
         input = input.contiguous().view(n, c, 1, -1)
         target = target.contiguous().view(n, 1, -1)
         if reduce:
-            return torch._C._nn.nll_loss2d(input, target, weight, size_average, ignore_index, reduce)
+            _loss = nn.NLLLoss2d(
+                weight=weight,
+                size_average=size_average,
+                ignore_index=ignore_index,
+                reduce=reduce
+            )
+            return _loss(input, target)
+            #return torch._C._nn.nll_loss2d(input, target, weight, size_average, ignore_index, reduce)
         out = torch._C._nn.nll_loss2d(input, target, weight, size_average, ignore_index, reduce)
         return out.view(out_size)
     else:

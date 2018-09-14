@@ -57,7 +57,7 @@ parser.add_argument(
     '-e', '--epochs', type=int, default=2000, metavar='EPOCHS', help='number of epochs to train (default: 2000)'
 )
 parser.add_argument(
-    '-es', '--early_stopping_epochs', type=int, default=100, metavar='EARLY_STOPPING',
+    '-es', '--early_stopping_epochs', type=int, default=35, metavar='EARLY_STOPPING',
     help='number of early stopping epochs'
 )
 
@@ -126,6 +126,9 @@ parser.add_argument('--residual', type=eval, default=False, choices=[True, False
 parser.add_argument('--rademacher', type=eval, default=False, choices=[True, False])
 parser.add_argument('--batch_norm', type=eval, default=False, choices=[True, False])
 parser.add_argument('--bn_lag', type=float, default=0)
+# evaluation
+parser.add_argument('--evaluate', type=eval, default=False, choices=[True, False])
+parser.add_argument('--model_path', type=str, default='')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -193,121 +196,130 @@ def run(args, kwargs):
     # ==================================================================================================================
     train_loader, val_loader, test_loader, args = load_dataset(args, **kwargs)
 
-    # ==================================================================================================================
-    # SELECT MODEL
-    # ==================================================================================================================
-    # flow parameters and architecture choice are passed on to model through args
+    if not args.evaluate:
 
-    if args.flow == 'no_flow':
-        model = VAE.VAE(args)
-    elif args.flow == 'planar':
-        model = VAE.PlanarVAE(args)
-    elif args.flow == 'iaf':
-        model = VAE.IAFVAE(args)
-    elif args.flow == 'orthogonal':
-        model = VAE.OrthogonalSylvesterVAE(args)
-    elif args.flow == 'householder':
-        model = VAE.HouseholderSylvesterVAE(args)
-    elif args.flow == 'triangular':
-        model = VAE.TriangularSylvesterVAE(args)
-    elif args.flow == 'cnf':
-        model = CNFVAE.CNFVAE(args)
-    elif args.flow == 'cnf_bias':
-        model = CNFVAE.AmortizedBiasCNFVAE(args)
-    elif args.flow == 'cnf_hyper':
-        model = CNFVAE.HypernetCNFVAE(args)
-    elif args.flow == 'cnf_lyper':
-        model = CNFVAE.LypernetCNFVAE(args)
-    elif args.flow == 'cnf_rank':
-        model = CNFVAE.AmortizedLowRankCNFVAE(args)
-    else:
-        raise ValueError('Invalid flow choice')
+        # ==================================================================================================================
+        # SELECT MODEL
+        # ==================================================================================================================
+        # flow parameters and architecture choice are passed on to model through args
 
-    if args.cuda:
-        logger.info("Model on GPU")
-        model.cuda()
-
-    logger.info(model)
-
-    optimizer = optim.Adamax(model.parameters(), lr=args.learning_rate, eps=1.e-7)
-
-    # ==================================================================================================================
-    # TRAINING
-    # ==================================================================================================================
-    train_loss = []
-    val_loss = []
-
-    # for early stopping
-    best_loss = np.inf
-    best_bpd = np.inf
-    e = 0
-    epoch = 0
-
-    train_times = []
-
-    for epoch in range(1, args.epochs + 1):
-
-        t_start = time.time()
-        tr_loss = train(epoch, train_loader, model, optimizer, args, logger)
-        train_loss.append(tr_loss)
-        train_times.append(time.time() - t_start)
-        logger.info('One training epoch took %.2f seconds' % (time.time() - t_start))
-
-        v_loss, v_bpd = evaluate(val_loader, model, args, logger, epoch=epoch)
-
-        val_loss.append(v_loss)
-
-        # early-stopping
-        if v_loss < best_loss:
-            e = 0
-            best_loss = v_loss
-            if args.input_type != 'binary':
-                best_bpd = v_bpd
-            logger.info('->model saved<-')
-            torch.save(model, snap_dir + args.flow + '.model')
-            # torch.save(model, snap_dir + args.flow + '_' + args.architecture + '.model')
-
-        elif (args.early_stopping_epochs > 0) and (epoch >= args.warmup):
-            e += 1
-            if e > args.early_stopping_epochs:
-                break
-
-        if args.input_type == 'binary':
-            logger.info(
-                '--> Early stopping: {}/{} (BEST: loss {:.4f})\n'.format(e, args.early_stopping_epochs, best_loss)
-            )
-
+        if args.flow == 'no_flow':
+            model = VAE.VAE(args)
+        elif args.flow == 'planar':
+            model = VAE.PlanarVAE(args)
+        elif args.flow == 'iaf':
+            model = VAE.IAFVAE(args)
+        elif args.flow == 'orthogonal':
+            model = VAE.OrthogonalSylvesterVAE(args)
+        elif args.flow == 'householder':
+            model = VAE.HouseholderSylvesterVAE(args)
+        elif args.flow == 'triangular':
+            model = VAE.TriangularSylvesterVAE(args)
+        elif args.flow == 'cnf':
+            model = CNFVAE.CNFVAE(args)
+        elif args.flow == 'cnf_bias':
+            model = CNFVAE.AmortizedBiasCNFVAE(args)
+        elif args.flow == 'cnf_hyper':
+            model = CNFVAE.HypernetCNFVAE(args)
+        elif args.flow == 'cnf_lyper':
+            model = CNFVAE.LypernetCNFVAE(args)
+        elif args.flow == 'cnf_rank':
+            model = CNFVAE.AmortizedLowRankCNFVAE(args)
         else:
-            logger.info(
-                '--> Early stopping: {}/{} (BEST: loss {:.4f}, bpd {:.4f})\n'.
-                format(e, args.early_stopping_epochs, best_loss, best_bpd)
-            )
+            raise ValueError('Invalid flow choice')
 
-        if math.isnan(v_loss):
-            raise ValueError('NaN encountered!')
+        if args.cuda:
+            logger.info("Model on GPU")
+            model.cuda()
 
-    train_loss = np.hstack(train_loss)
-    val_loss = np.array(val_loss)
+        logger.info(model)
 
-    plot_training_curve(train_loss, val_loss, fname=snap_dir + '/training_curve_%s.pdf' % args.flow)
+        optimizer = optim.Adamax(model.parameters(), lr=args.learning_rate, eps=1.e-7)
 
-    # training time per epoch
-    train_times = np.array(train_times)
-    mean_train_time = np.mean(train_times)
-    std_train_time = np.std(train_times, ddof=1)
-    logger.info('Average train time per epoch: %.2f +/- %.2f' % (mean_train_time, std_train_time))
+        # ==================================================================================================================
+        # TRAINING
+        # ==================================================================================================================
+        train_loss = []
+        val_loss = []
 
-    # ==================================================================================================================
-    # EVALUATION
-    # ==================================================================================================================
+        # for early stopping
+        best_loss = np.inf
+        best_bpd = np.inf
+        e = 0
+        epoch = 0
 
-    logger.info(args)
-    logger.info('Stopped after %d epochs' % epoch)
-    logger.info('Average train time per epoch: %.2f +/- %.2f' % (mean_train_time, std_train_time))
+        train_times = []
 
-    final_model = torch.load(snap_dir + args.flow + '.model')
+        for epoch in range(1, args.epochs + 1):
 
-    validation_loss, validation_bpd = evaluate(val_loader, final_model, args, logger)
+            t_start = time.time()
+            tr_loss = train(epoch, train_loader, model, optimizer, args, logger)
+            train_loss.append(tr_loss)
+            train_times.append(time.time() - t_start)
+            logger.info('One training epoch took %.2f seconds' % (time.time() - t_start))
+
+            v_loss, v_bpd = evaluate(val_loader, model, args, logger, epoch=epoch)
+
+            val_loss.append(v_loss)
+
+            # early-stopping
+            if v_loss < best_loss:
+                e = 0
+                best_loss = v_loss
+                if args.input_type != 'binary':
+                    best_bpd = v_bpd
+                logger.info('->model saved<-')
+                torch.save(model, snap_dir + args.flow + '.model')
+                # torch.save(model, snap_dir + args.flow + '_' + args.architecture + '.model')
+
+            elif (args.early_stopping_epochs > 0) and (epoch >= args.warmup):
+                e += 1
+                if e > args.early_stopping_epochs:
+                    break
+
+            if args.input_type == 'binary':
+                logger.info(
+                    '--> Early stopping: {}/{} (BEST: loss {:.4f})\n'.format(e, args.early_stopping_epochs, best_loss)
+                )
+
+            else:
+                logger.info(
+                    '--> Early stopping: {}/{} (BEST: loss {:.4f}, bpd {:.4f})\n'.
+                    format(e, args.early_stopping_epochs, best_loss, best_bpd)
+                )
+
+            if math.isnan(v_loss):
+                raise ValueError('NaN encountered!')
+
+        train_loss = np.hstack(train_loss)
+        val_loss = np.array(val_loss)
+
+        plot_training_curve(train_loss, val_loss, fname=snap_dir + '/training_curve_%s.pdf' % args.flow)
+
+        # training time per epoch
+        train_times = np.array(train_times)
+        mean_train_time = np.mean(train_times)
+        std_train_time = np.std(train_times, ddof=1)
+        logger.info('Average train time per epoch: %.2f +/- %.2f' % (mean_train_time, std_train_time))
+
+        # ==================================================================================================================
+        # EVALUATION
+        # ==================================================================================================================
+
+        logger.info(args)
+        logger.info('Stopped after %d epochs' % epoch)
+        logger.info('Average train time per epoch: %.2f +/- %.2f' % (mean_train_time, std_train_time))
+
+        final_model = torch.load(snap_dir + args.flow + '.model')
+        validation_loss, validation_bpd = evaluate(val_loader, final_model, args, logger)
+
+    else:
+        validation_loss = "N/A"
+        validation_bpd = "N/A"
+        logger.info(f"Loading model from {args.model_path}")
+        final_model = torch.load(args.model_path)
+
+
     test_loss, test_bpd = evaluate(test_loader, final_model, args, logger, testing=True)
 
     logger.info('FINAL EVALUATION ON VALIDATION SET\n' 'ELBO (VAL): {:.4f}\n'.format(validation_loss))
