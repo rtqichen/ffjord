@@ -174,7 +174,14 @@ if __name__ == '__main__':
 
     if args.resume is not None:
         checkpt = torch.load(args.resume)
-        model.load_state_dict(checkpt['state_dict'])
+
+        # Backwards compatibility with an older version of the code.
+        # TODO: remove upon release.
+        filtered_state_dict = {}
+        for k, v in checkpt['state_dict'].items():
+            if 'diffeq.diffeq' not in k:
+                filtered_state_dict[k.replace('module.', '')] = v
+        model.load_state_dict(filtered_state_dict)
 
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))

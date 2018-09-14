@@ -23,7 +23,7 @@ def divergence_bf(dx, y, **unused_kwargs):
 #     return torch.sum(diagonal, 1)
 
 
-def _get_minibatch_jacobian(y, x, create_graph=False):
+def _get_minibatch_jacobian(y, x):
     """Computes the Jacobian of y wrt x assuming minibatch-mode.
 
     Args:
