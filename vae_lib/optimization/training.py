@@ -23,7 +23,6 @@ def train(epoch, train_loader, model, opt, args, logger):
     logger.info('beta = {:5.4f}'.format(beta))
     end = time.time()
     for batch_idx, (data, _) in enumerate(train_loader):
-
         if args.cuda:
             data = data.cuda()
 
@@ -73,6 +72,7 @@ def train(epoch, train_loader, model, opt, args, logger):
                 tmp = 'Epoch {:3d} [{:5d}/{:5d} ({:2.0f}%)] | Time {:.3f} | Loss {:11.6f} | Bits/dim {:8.6f}'
                 log_msg = tmp.format(epoch, num_data, len(train_loader.sampler), perc, batch_time, loss.item(),
                                      bpd), '\trec: {:11.3f}\tkl: {:11.6f}'.format(rec, kl)
+                log_msg = "".join(log_msg)
             if 'cnf' in args.flow:
                 log_msg += ' | NFE Forward {} | NFE Backward {}'.format(f_nfe, b_nfe)
             logger.info(log_msg)
@@ -98,6 +98,9 @@ def evaluate(data_loader, model, args, logger, testing=False, epoch=0):
         loss_type = 'elbo'
     else:
         loss_type = 'bpd'
+
+    if testing and 'cnf' in args.flow:
+        override_divergence_fn(model, "brute_force")
 
     for data, _ in data_loader:
         batch_idx += 1
@@ -126,9 +129,7 @@ def evaluate(data_loader, model, args, logger, testing=False, epoch=0):
         logger.info('====> Test set loss: {:.4f}'.format(loss))
 
     # Compute log-likelihood
-    if testing:
-        if 'cnf' in args.flow:
-            override_divergence_fn(model, "brute_force")
+    if testing and not ("cnf" in args.flow):  # don't compute log-likelihood for cnf models
 
         with torch.no_grad():
             test_data = data_loader.dataset.tensors[0]
@@ -154,7 +155,7 @@ def evaluate(data_loader, model, args, logger, testing=False, epoch=0):
     if args.input_type in ['multinomial']:
         bpd = loss / (np.prod(args.input_size) * np.log(2.))
 
-    if testing:
+    if testing and not ("cnf" in args.flow):
         logger.info('====> Test set log-likelihood: {:.4f}'.format(log_likelihood))
 
         if args.input_type != 'binary':
