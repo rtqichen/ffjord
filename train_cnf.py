@@ -23,7 +23,7 @@ from train_misc import create_regularization_fns, get_regularization, append_reg
 torch.backends.cudnn.benchmark = True
 SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
 parser = argparse.ArgumentParser("Continuous Normalizing Flow")
-parser.add_argument("--data", choices=["mnist", "svhn", "cifar10"], type=str, default="mnist")
+parser.add_argument("--data", choices=["mnist", "svhn", "cifar10", 'lsun_church'], type=str, default="mnist")
 parser.add_argument("--dims", type=str, default="8,32,32,8")
 parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
 parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
@@ -161,7 +161,7 @@ def get_dataset(args):
             ]), download=True
         )
         test_set = dset.CIFAR10(root="./data", train=False, transform=trans(im_size), download=True)
-    elif args.dataset == 'celeba':
+    elif args.data == 'celeba':
         im_dim = 3
         im_size = 64 if args.imagesize is None else args.imagesize
         train_set = dset.CelebA(
@@ -176,7 +176,28 @@ def get_dataset(args):
         test_set = dset.CelebA(
             train=False, transform=tforms.Compose([
                 tforms.ToPILImage(),
-                tforms.Resize(args.imagesize),
+                tforms.Resize(im_size),
+                tforms.ToTensor(),
+                add_noise,
+            ])
+        )
+    elif args.data == 'lsun_church':
+        im_dim = 3
+        im_size = 64 if args.imagesize is None else args.imagesize
+        train_set = dset.LSUN(
+            'data', ['church_outdoor_train'], transform=tforms.Compose([
+                tforms.Resize(96),
+                tforms.RandomCrop(64),
+                tforms.Resize(im_size),
+                tforms.ToTensor(),
+                add_noise,
+            ])
+        )
+        test_set = dset.LSUN(
+            'data', ['church_outdoor_val'], transform=tforms.Compose([
+                tforms.Resize(96),
+                tforms.RandomCrop(64),
+                tforms.Resize(im_size),
                 tforms.ToTensor(),
                 add_noise,
             ])
