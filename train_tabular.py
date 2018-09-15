@@ -201,6 +201,9 @@ if __name__ == '__main__':
         end = time.time()
         model.train()
         while True:
+            if args.early_stopping > 0 and n_vals_without_improvement > args.early_stopping:
+                break
+
             for x in batch_iter(data.trn.x, shuffle=True):
                 if args.early_stopping > 0 and n_vals_without_improvement > args.early_stopping:
                     break
