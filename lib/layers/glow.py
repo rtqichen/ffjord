@@ -3,10 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class GlowLayer(nn.Module):
+class BruteForceLayer(nn.Module):
 
     def __init__(self, dim):
-        super(GlowLayer, self).__init__()
+        super(BruteForceLayer, self).__init__()
         self.weight = nn.Parameter(torch.eye(dim)[torch.randperm(dim)])
 
     def forward(self, x, logpx=None, reverse=False):

@@ -6,10 +6,10 @@ class CouplingLayer(nn.Module):
 
     def __init__(self, d, intermediate_dim=32, swap=False):
         nn.Module.__init__(self)
-        self.d = d // 2
+        self.d = d - (d // 2)
         self.swap = swap
         self.net_s_t = nn.Sequential(
-            nn.Linear(self.d, intermediate_dim), nn.Tanh(), nn.Linear(intermediate_dim, self.d * 2)
+            nn.Linear(self.d, intermediate_dim), nn.Tanh(), nn.Linear(intermediate_dim, (d - self.d) * 2)
         )
 
     def forward(self, x, logpx=None, reverse=False):
@@ -17,11 +17,14 @@ class CouplingLayer(nn.Module):
         if self.swap:
             x = torch.cat([x[:, self.d:], x[:, :self.d]], 1)
 
-        s_t = self.net_s_t(x[:, :self.d])
-        scale = torch.sigmoid(s_t[:, :self.d] + 2.)
-        shift = s_t[:, self.d:]
+        in_dim = self.d
+        out_dim = x.shape[1] - self.d
 
-        logdetjac = torch.mean(torch.log(scale).view(scale.shape[0], -1), 1, keepdim=True)
+        s_t = self.net_s_t(x[:, :in_dim])
+        scale = torch.sigmoid(s_t[:, :out_dim] + 2.)
+        shift = s_t[:, out_dim:]
+
+        logdetjac = torch.sum(torch.log(scale).view(scale.shape[0], -1), 1, keepdim=True)
 
         if not reverse:
             y1 = x[:, self.d:] * scale + shift
