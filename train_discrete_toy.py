@@ -61,7 +61,7 @@ def construct_model():
 
     chain = []
     for i in range(args.depth):
-        if args.glow: chain.append(layers.GlowLayer(2))
+        if args.glow: chain.append(layers.BruteForceLayer(2))
         chain.append(layers.CouplingLayer(2, swap=i % 2 == 0))
     return layers.SequentialFlow(chain)
 
