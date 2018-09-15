@@ -27,7 +27,7 @@ parser.add_argument(
 parser.add_argument('--depth', help='number of coupling layers', type=int, default=10)
 parser.add_argument('--glow', type=eval, choices=[True, False], default=False)
 
-parser.add_argument('--niters', type=int, default=500001)
+parser.add_argument('--niters', type=int, default=100001)
 parser.add_argument('--batch_size', type=int, default=100)
 parser.add_argument('--test_batch_size', type=int, default=1000)
 parser.add_argument('--lr', type=float, default=1e-4)
