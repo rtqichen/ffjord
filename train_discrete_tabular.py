@@ -26,7 +26,7 @@ parser.add_argument('--bn_lag', type=float, default=0)
 parser.add_argument('--early_stopping', type=int, default=30)
 parser.add_argument('--batch_size', type=int, default=1000)
 parser.add_argument('--test_batch_size', type=int, default=None)
-parser.add_argument('--lr', type=float, default=1e-3)
+parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--weight_decay', type=float, default=1e-6)
 
 parser.add_argument('--resume', type=str, default=None)
@@ -101,9 +101,9 @@ def build_model(dim):
     chain = []
     if args.batch_norm: chain.append(layers.MovingBatchNorm1d(dim, bn_lag=args.bn_lag))
     for i in range(args.depth):
-        if args.glow: chain.append(layers.GlowLayer(dim))
-        chain.append(layers.CouplingLayer(dim, intermediate_dim=dim * args.hdim_factor, swap=i % 2 == 0))
-    if args.batch_norm: chain.append(layers.MovingBatchNorm1d(dim, bn_lag=args.bn_lag))
+        if args.glow: chain.append(layers.BruteForceLayer(dim))
+        chain.append(layers.MaskedCouplingLayer(dim, dim * args.hdim_factor, 'alternate', swap=i % 2 == 0))
+        if args.batch_norm: chain.append(layers.MovingBatchNorm1d(dim, bn_lag=args.bn_lag))
     return layers.SequentialFlow(chain)
 
 
