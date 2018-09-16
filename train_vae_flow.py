@@ -322,11 +322,11 @@ def run(args, kwargs):
 
     test_loss, test_bpd = evaluate(test_loader, final_model, args, logger, testing=True)
 
-    logger.info('FINAL EVALUATION ON VALIDATION SET\n' 'ELBO (VAL): {:.4f}\n'.format(validation_loss))
-    logger.info('FINAL EVALUATION ON TEST SET\n' 'NLL (TEST): {:.4f}\n'.format(test_loss))
+    logger.info('FINAL EVALUATION ON VALIDATION SET. ELBO (VAL): {:.4f}'.format(validation_loss))
+    logger.info('FINAL EVALUATION ON TEST SET. NLL (TEST): {:.4f}'.format(test_loss))
     if args.input_type != 'binary':
-        logger.info('FINAL EVALUATION ON VALIDATION SET\n' 'ELBO (VAL) BPD : {:.4f}\n'.format(validation_bpd))
-        logger.info('FINAL EVALUATION ON TEST SET\n' 'NLL (TEST) BPD: {:.4f}\n'.format(test_bpd))
+        logger.info('FINAL EVALUATION ON VALIDATION SET. ELBO (VAL) BPD : {:.4f}'.format(validation_bpd))
+        logger.info('FINAL EVALUATION ON TEST SET. NLL (TEST) BPD: {:.4f}'.format(test_bpd))
 
 
 if __name__ == "__main__":
