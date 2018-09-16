@@ -212,7 +212,7 @@ if __name__ == '__main__':
                 plt.figure(figsize=(9, 3))
                 visualize_transform(
                     p_samples, torch.randn, standard_normal_logprob, transform=sample_fn, inverse_transform=density_fn,
-                    samples=True, npts=100, device=device
+                    samples=True, npts=800, device=device
                 )
                 fig_filename = os.path.join(args.save, 'figs', '{:04d}.jpg'.format(itr))
                 utils.makedirs(os.path.dirname(fig_filename))
