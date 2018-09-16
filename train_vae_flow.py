@@ -129,6 +129,7 @@ parser.add_argument('--bn_lag', type=float, default=0)
 # evaluation
 parser.add_argument('--evaluate', type=eval, default=False, choices=[True, False])
 parser.add_argument('--model_path', type=str, default='')
+parser.add_argument('--retrain_encoder', type=eval, default=False, choices=[True, False])
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -175,6 +176,11 @@ def run(args, kwargs):
     elif 'cnf' in args.flow:
         snap_dir = snap_dir + '_' + args.dims + '_num_blocks_' + str(args.num_blocks)
 
+    if args.retrain_encoder:
+        snap_dir = snap_dir + '_retrain-encoder_'
+    elif args.evaluate:
+        snap_dir = snap_dir + '_evaluate_'
+
     snap_dir = snap_dir + '__' + args.model_signature + '/'
 
     args.snap_dir = snap_dir
@@ -198,9 +204,9 @@ def run(args, kwargs):
 
     if not args.evaluate:
 
-        # ==================================================================================================================
+        # ==============================================================================================================
         # SELECT MODEL
-        # ==================================================================================================================
+        # ==============================================================================================================
         # flow parameters and architecture choice are passed on to model through args
 
         if args.flow == 'no_flow':
@@ -228,13 +234,32 @@ def run(args, kwargs):
         else:
             raise ValueError('Invalid flow choice')
 
+        if args.retrain_encoder:
+            logger.info(f"Initializing decoder from {args.model_path}")
+            dec_model = torch.load(args.model_path)
+            dec_sd = {}
+            for k, v in dec_model.state_dict().items():
+                if 'p_x' in k:
+                    dec_sd[k] = v
+            model.load_state_dict(dec_sd, strict=False)
+
         if args.cuda:
             logger.info("Model on GPU")
             model.cuda()
 
         logger.info(model)
 
-        optimizer = optim.Adamax(model.parameters(), lr=args.learning_rate, eps=1.e-7)
+        if args.retrain_encoder:
+            parameters = []
+            logger.info('Optimizing over:')
+            for name, param in model.named_parameters():
+                if 'p_x' not in name:
+                    logger.info(name)
+                    parameters.append(param)
+        else:
+            parameters = model.parameters()
+
+        optimizer = optim.Adamax(parameters, lr=args.learning_rate, eps=1.e-7)
 
         # ==================================================================================================================
         # TRAINING
@@ -318,7 +343,6 @@ def run(args, kwargs):
         validation_bpd = "N/A"
         logger.info(f"Loading model from {args.model_path}")
         final_model = torch.load(args.model_path)
-
 
     test_loss, test_bpd = evaluate(test_loader, final_model, args, logger, testing=True)
 
