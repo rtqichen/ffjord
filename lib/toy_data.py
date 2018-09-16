@@ -72,6 +72,12 @@ def inf_train_gen(data, rng=None, batch_size=200):
         x += np.random.randn(*x.shape) * 0.1
         return x
 
+    elif data == "checkerboard":
+        x1 = np.random.rand(batch_size) * 4 - 2
+        x2_ = np.random.rand(batch_size) - np.random.randint(0, 2, batch_size) * 2
+        x2 = x2_ + (np.floor(x1) % 2)
+        return np.concatenate([x1[:, None], x2[:, None]], 1) * 2
+
     elif data == "line":
         x = rng.rand(batch_size) * 5 - 2.5
         y = x
