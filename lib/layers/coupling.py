@@ -45,16 +45,12 @@ class CouplingLayer(nn.Module):
 
 class MaskedCouplingLayer(nn.Module):
 
-    def __init__(self, d, intermediate_dim=32, mask_type='alternate', swap=False):
+    def __init__(self, d, hidden_dims, mask_type='alternate', swap=False):
         nn.Module.__init__(self)
         self.d = d
         self.register_buffer('mask', sample_mask(d, mask_type, swap).view(1, d))
-        self.net_scale = nn.Sequential(
-            nn.Linear(self.d, intermediate_dim), nn.Tanh(), nn.Linear(intermediate_dim, self.d)
-        )
-        self.net_shift = nn.Sequential(
-            nn.Linear(self.d, intermediate_dim), nn.ReLU(), nn.Linear(intermediate_dim, self.d)
-        )
+        self.net_scale = build_net(d, hidden_dims, activation="tanh")
+        self.net_shift = build_net(d, hidden_dims, activation="relu")
 
     def forward(self, x, logpx=None, reverse=False):
 
@@ -96,3 +92,15 @@ def sample_mask(dim, mask_type, swap):
         return mask
     else:
         raise ValueError('Unknown mask_type {}'.format(mask_type))
+
+
+def build_net(input_dim, hidden_dims, activation="relu"):
+    dims = (input_dim,) + tuple(hidden_dims) + (input_dim,)
+    activation_modules = {"relu": nn.ReLU(inplace=True), "tanh": nn.Tanh()}
+
+    chain = []
+    for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
+        chain.append(nn.Linear(in_dim, out_dim))
+        if i < len(hidden_dims):
+            chain.append(activation_modules[activation])
+    return nn.Sequential(*chain)

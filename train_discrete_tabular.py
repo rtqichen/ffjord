@@ -18,7 +18,7 @@ parser.add_argument(
 )
 
 parser.add_argument('--depth', type=int, default=10)
-parser.add_argument('--hdim_factor', type=int, default=10)
+parser.add_argument('--dims', type=str, default="100-100")
 parser.add_argument('--glow', type=eval, default=False, choices=[True, False])
 parser.add_argument('--batch_norm', type=eval, default=False, choices=[True, False])
 parser.add_argument('--bn_lag', type=float, default=0)
@@ -97,13 +97,14 @@ def load_data(name):
         raise ValueError('Unknown dataset')
 
 
-def build_model(dim):
+def build_model(input_dim):
+    hidden_dims = tuple(map(int, args.dims.split("-")))
     chain = []
-    if args.batch_norm: chain.append(layers.MovingBatchNorm1d(dim, bn_lag=args.bn_lag))
+    if args.batch_norm: chain.append(layers.MovingBatchNorm1d(input_dim, bn_lag=args.bn_lag))
     for i in range(args.depth):
-        if args.glow: chain.append(layers.BruteForceLayer(dim))
-        chain.append(layers.MaskedCouplingLayer(dim, dim * args.hdim_factor, 'alternate', swap=i % 2 == 0))
-        if args.batch_norm: chain.append(layers.MovingBatchNorm1d(dim, bn_lag=args.bn_lag))
+        if args.glow: chain.append(layers.BruteForceLayer(input_dim))
+        chain.append(layers.MaskedCouplingLayer(input_dim, hidden_dims, 'alternate', swap=i % 2 == 0))
+        if args.batch_norm: chain.append(layers.MovingBatchNorm1d(input_dim, bn_lag=args.bn_lag))
     return layers.SequentialFlow(chain)
 
 
@@ -136,8 +137,6 @@ if __name__ == '__main__':
     data.val.x = torch.from_numpy(data.val.x)
     data.tst.x = torch.from_numpy(data.tst.x)
 
-    logger.info(data.n_dims)
-
     model = build_model(data.n_dims).to(device)
 
     if args.resume is not None:
@@ -159,6 +158,9 @@ if __name__ == '__main__':
         end = time.time()
         model.train()
         while True:
+            if args.early_stopping > 0 and n_vals_without_improvement > args.early_stopping:
+                break
+
             for x in batch_iter(data.trn.x, shuffle=True):
                 if args.early_stopping > 0 and n_vals_without_improvement > args.early_stopping:
                     break
