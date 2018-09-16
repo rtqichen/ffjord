@@ -5,6 +5,7 @@ __all__ = ['CouplingLayer', 'MaskedCouplingLayer']
 
 
 class CouplingLayer(nn.Module):
+    """Used in 2D experiments."""
 
     def __init__(self, d, intermediate_dim=32, swap=False):
         nn.Module.__init__(self)
@@ -44,6 +45,7 @@ class CouplingLayer(nn.Module):
 
 
 class MaskedCouplingLayer(nn.Module):
+    """Used in the tabular experiments."""
 
     def __init__(self, d, hidden_dims, mask_type='alternate', swap=False):
         nn.Module.__init__(self)
@@ -54,7 +56,7 @@ class MaskedCouplingLayer(nn.Module):
 
     def forward(self, x, logpx=None, reverse=False):
 
-        scale = torch.sigmoid(self.net_scale(x * self.mask) + 2.)
+        scale = torch.exp(self.net_scale(x * self.mask))
         shift = self.net_shift(x * self.mask)
 
         masked_scale = scale * (1 - self.mask) + torch.ones_like(scale) * self.mask

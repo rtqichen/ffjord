@@ -19,6 +19,7 @@ parser.add_argument(
 
 parser.add_argument('--depth', type=int, default=10)
 parser.add_argument('--dims', type=str, default="100-100")
+parser.add_argument('--nonlinearity', type=str, default="tanh")
 parser.add_argument('--glow', type=eval, default=False, choices=[True, False])
 parser.add_argument('--batch_norm', type=eval, default=False, choices=[True, False])
 parser.add_argument('--bn_lag', type=float, default=0)
@@ -100,7 +101,6 @@ def load_data(name):
 def build_model(input_dim):
     hidden_dims = tuple(map(int, args.dims.split("-")))
     chain = []
-    if args.batch_norm: chain.append(layers.MovingBatchNorm1d(input_dim, bn_lag=args.bn_lag))
     for i in range(args.depth):
         if args.glow: chain.append(layers.BruteForceLayer(input_dim))
         chain.append(layers.MaskedCouplingLayer(input_dim, hidden_dims, 'alternate', swap=i % 2 == 0))
