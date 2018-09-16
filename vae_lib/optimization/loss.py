@@ -209,9 +209,13 @@ def nll_loss(input, target, weight=None, size_average=True, ignore_index=-100, r
     """
     dim = input.dim()
     if dim == 2:
-        return torch._C._nn.nll_loss(input, target, weight, size_average, ignore_index, reduce)
+        return F.nll_loss(
+            input, target, weight=weight, size_average=size_average, ignore_index=ignore_index, reduce=reduce
+        )
     elif dim == 4:
-        return torch._C._nn.nll_loss2d(input, target, weight, size_average, ignore_index, reduce)
+        return F.nll_loss(
+            input, target, weight=weight, size_average=size_average, ignore_index=ignore_index, reduce=reduce
+        )
     elif dim == 3 or dim > 4:
         n = input.size(0)
         c = input.size(1)
@@ -221,15 +225,11 @@ def nll_loss(input, target, weight=None, size_average=True, ignore_index=-100, r
         input = input.contiguous().view(n, c, 1, -1)
         target = target.contiguous().view(n, 1, -1)
         if reduce:
-            _loss = nn.NLLLoss2d(
-                weight=weight,
-                size_average=size_average,
-                ignore_index=ignore_index,
-                reduce=reduce
-            )
+            _loss = nn.NLLLoss2d(weight=weight, size_average=size_average, ignore_index=ignore_index, reduce=reduce)
             return _loss(input, target)
-            #return torch._C._nn.nll_loss2d(input, target, weight, size_average, ignore_index, reduce)
-        out = torch._C._nn.nll_loss2d(input, target, weight, size_average, ignore_index, reduce)
+        out = F.nll_loss(
+            input, target, weight=weight, size_average=size_average, ignore_index=ignore_index, reduce=reduce
+        )
         return out.view(out_size)
     else:
         raise ValueError('Expected 2 or more dimensions (got {})'.format(dim))

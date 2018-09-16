@@ -142,9 +142,9 @@ def evaluate(data_loader, model, args, logger, testing=False, epoch=0):
             model.eval()
 
             if args.dataset == 'caltech':
-                log_likelihood, nll_bpd = calculate_likelihood(test_data, model, args, logger, S=2000, MB=2000)
+                log_likelihood, nll_bpd = calculate_likelihood(test_data, model, args, logger, S=2000, MB=500)
             else:
-                log_likelihood, nll_bpd = calculate_likelihood(test_data, model, args, logger, S=5000, MB=5000)
+                log_likelihood, nll_bpd = calculate_likelihood(test_data, model, args, logger, S=5000, MB=500)
 
         if 'cnf' in args.flow:
             override_divergence_fn(model, args.divergence_fn)
