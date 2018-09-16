@@ -12,7 +12,7 @@ class CouplingLayer(nn.Module):
         self.d = d - (d // 2)
         self.swap = swap
         self.net_s_t = nn.Sequential(
-            nn.Linear(self.d, intermediate_dim), nn.Tanh(), nn.Linear(intermediate_dim, (d - self.d) * 2)
+            nn.Linear(self.d, intermediate_dim), nn.ReLU(inplace=True), nn.Linear(intermediate_dim, (d - self.d) * 2)
         )
 
     def forward(self, x, logpx=None, reverse=False):
