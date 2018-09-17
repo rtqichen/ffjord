@@ -1,5 +1,5 @@
 import matplotlib
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -126,12 +126,6 @@ def compute_loss(args, model, batch_size=None):
     return loss
 
 if __name__ == '__main__':
-
-    x = toy_data.inf_train_gen("rowimg",batch_size=args.batch_size)
-
-    plt.spy(x)
-
-    plt.savefig('test.png')
 
     regularization_fns, regularization_coeffs = create_regularization_fns(args)
     model = build_model_tabular(args, 200, regularization_fns).to(device)
