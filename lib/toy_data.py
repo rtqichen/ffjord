@@ -81,5 +81,13 @@ def inf_train_gen(data, rng=None, batch_size=200):
         y = np.sin(x) * 2.5
         return np.stack((x, y), 1)
     elif data == "rowimg":
-        x = np.zeros([batch_size,200])
+        imagewidth = 200
+        blockwidth = 20
+        x = np.zeros([batch_size,imagewidth])
+        for sample in x:
+            o1 = np.random.randint(0,imagewidth-blockwidth)
+            o2 = np.random.randint(0,imagewidth-blockwidth)
+            sample[o1:o1+blockwidth] +=1
+            sample[o2:o2+blockwidth] +=1
+        
         return x
