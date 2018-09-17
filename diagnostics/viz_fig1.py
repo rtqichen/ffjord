@@ -35,7 +35,12 @@ def save_fig1(model, data_samples, savedir, ntimes=101, memory=0.01, device='cpu
             z_traj = z_traj.cpu().numpy()
 
  
-        plt.imshow(z_traj)
+        print(integration_times.shape)
+        print(z_traj[:,0,:].shape)
+        plt.imshow(z_traj[:,0,:])
+        # plt.show()
+        makedirs(savedir)
+        plt.savefig(os.path.join(savedir, "fig1.jpg"))
 
             # plt.figure(figsize=(8, 8))
             # for _ in range(z_traj.shape[0]):
