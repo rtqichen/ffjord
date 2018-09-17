@@ -89,5 +89,5 @@ def inf_train_gen(data, rng=None, batch_size=200):
             o2 = np.random.randint(0,imagewidth-blockwidth)
             sample[o1:o1+blockwidth] +=1
             sample[o2:o2+blockwidth] +=1
-        
+        x += np.random.randn(*x.shape) * 0.1
         return x

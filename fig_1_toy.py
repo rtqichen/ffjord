@@ -1,10 +1,7 @@
 import matplotlib
-# matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-import lib.toy_data as toy_data
-import numpy as np
-import time
 import argparse
 import os
 import time
@@ -71,6 +68,7 @@ parser.add_argument('--JFrobint', type=float, default=None, help="int_t ||df/dx|
 parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df_i/dx_i||_F")
 parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
 
+parser.add_argument("--resume", type=str, default=None)
 parser.add_argument('--save', type=str, default='experiments/fig1')
 parser.add_argument('--viz_freq', type=int, default=100)
 parser.add_argument('--val_freq', type=int, default=100)
@@ -89,6 +87,7 @@ if args.layer_type == "blend":
 logger.info(args)
 
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
+print('GPU active:',torch.cuda.is_available())
 
 
 def get_transforms(model):
@@ -114,7 +113,6 @@ def compute_loss(args, model, batch_size=None):
     # load data
     x = toy_data.inf_train_gen(args.data, batch_size=batch_size)
     x = torch.from_numpy(x).type(torch.float32).to(device)
-    print('x',x.shape)
     zero = torch.zeros(x.shape[0], 1).to(x)
 
     # transform to z
@@ -131,7 +129,9 @@ if __name__ == '__main__':
 
     x = toy_data.inf_train_gen("rowimg",batch_size=args.batch_size)
 
+    plt.spy(x)
 
+    plt.savefig('test.png')
 
     regularization_fns, regularization_coeffs = create_regularization_fns(args)
     model = build_model_tabular(args, 200, regularization_fns).to(device)
@@ -142,6 +142,18 @@ if __name__ == '__main__':
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+
+    # restore parameters
+    if args.resume is not None:
+        checkpt = torch.load(args.resume, map_location=lambda storage, loc: storage)
+        model.load_state_dict(checkpt["state_dict"])
+        if "optim_state_dict" in checkpt.keys():
+            optimizer.load_state_dict(checkpt["optim_state_dict"])
+            # Manually move optimizer state to device.
+            for state in optimizer.state.values():
+                for k, v in state.items():
+                    if torch.is_tensor(v):
+                        state[k] = cvt(v)
 
     time_meter = utils.RunningAverageMeter(0.93)
     loss_meter = utils.RunningAverageMeter(0.93)
@@ -209,23 +221,23 @@ if __name__ == '__main__':
                     }, os.path.join(args.save, 'checkpt.pth'))
                 model.train()
 
-        if itr % args.viz_freq == 0:
-            with torch.no_grad():
-                model.eval()
-                p_samples = toy_data.inf_train_gen(args.data, batch_size=2000)
+        # if itr % args.viz_freq == 0:
+        #     with torch.no_grad():
+        #         model.eval()
+        #         p_samples = toy_data.inf_train_gen(args.data, batch_size=2000)
 
-                sample_fn, density_fn = get_transforms(model)
+        #         sample_fn, density_fn = get_transforms(model)
 
-                plt.figure(figsize=(9, 3))
-                visualize_transform(
-                    p_samples, torch.randn, standard_normal_logprob, transform=sample_fn, inverse_transform=density_fn,
-                    samples=True, npts=100, device=device
-                )
-                fig_filename = os.path.join(args.save, 'figs', '{:04d}.jpg'.format(itr))
-                utils.makedirs(os.path.dirname(fig_filename))
-                plt.savefig(fig_filename)
-                plt.close()
-                model.train()
+        #         plt.figure(figsize=(9, 3))
+        #         visualize_transform(
+        #             p_samples, torch.randn, standard_normal_logprob, transform=sample_fn, inverse_transform=density_fn,
+        #             samples=True, npts=100, device=device
+        #         )
+        #         fig_filename = os.path.join(args.save, 'figs', '{:04d}.jpg'.format(itr))
+        #         utils.makedirs(os.path.dirname(fig_filename))
+        #         plt.savefig(fig_filename)
+        #         plt.close()
+        #         model.train()
 
         end = time.time()
 
