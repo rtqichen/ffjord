@@ -37,6 +37,7 @@ def save_fig1(model, data_samples, savedir, ntimes=101, memory=0.01, device='cpu
  
         print(integration_times.shape)
         print(z_traj[:,0,:].shape)
+
         plt.imshow(z_traj[:,0,:])
         # plt.show()
         makedirs(savedir)
