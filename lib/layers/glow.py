@@ -19,7 +19,7 @@ class BruteForceLayer(nn.Module):
                 return y, logpx - self._logdetgrad.expand_as(logpx)
 
         else:
-            y = F.linear(x, self.weight.inverse())
+            y = F.linear(x, self.weight.double().inverse().float())
             if logpx is None:
                 return y
             else:
@@ -27,4 +27,4 @@ class BruteForceLayer(nn.Module):
 
     @property
     def _logdetgrad(self):
-        return torch.log(torch.abs(torch.det(self.weight)))
+        return torch.log(torch.abs(torch.det(self.weight.double()))).float()
