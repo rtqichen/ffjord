@@ -7,7 +7,7 @@ class BruteForceLayer(nn.Module):
 
     def __init__(self, dim):
         super(BruteForceLayer, self).__init__()
-        self.weight = nn.Parameter(torch.eye(dim)[torch.randperm(dim)])
+        self.weight = nn.Parameter(torch.eye(dim))
 
     def forward(self, x, logpx=None, reverse=False):
 
