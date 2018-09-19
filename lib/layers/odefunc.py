@@ -320,9 +320,11 @@ class AutoencoderODEfunc(nn.Module):
         self.autoencoder_diffeq = autoencoder_diffeq
         self.rademacher = rademacher
 
+        self.register_buffer("_num_evals", torch.tensor(0.))
+
     def before_odeint(self, e=None):
         self._e = e
-        self._num_evals = 0
+        self._num_evals.fill_(0)
 
     def forward(self, t, y_and_logpy):
         y, _ = y_and_logpy  # remove logpy
