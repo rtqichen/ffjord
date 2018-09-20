@@ -3,11 +3,11 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-CIFAR10 = "diagnostics/cifar10.log"
-CIFAR10_SN = "diagnostics/cifar10_sn.log"
+CIFAR10 = "diagnostics/cifar10_multiscale.log"
+CIFAR10_SN = "diagnostics/cifar10_multiscale_sn.log"
 
-MNIST = "diagnostics/mnist.log"
-MNIST_SN = "diagnostics/mnist_sn.log"
+MNIST = "diagnostics/mnist_multiscale.log"
+MNIST_SN = "diagnostics/mnist_multiscale_sn.log"
 
 
 def get_values(filename):
