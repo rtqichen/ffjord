@@ -56,9 +56,10 @@ class PlanarFlow(nn.Module):
 
     def _detgrad(self, z):
         """Computes |det df/dz|"""
-        z = z.requires_grad_(True)
-        h = self.activation(torch.mm(z, self.w.view(self.nd, 1)) + self.b)
-        psi = grad(h, z, grad_outputs=torch.ones_like(h), create_graph=True, only_inputs=True)[0]
+        with torch.enable_grad():
+            z = z.requires_grad_(True)
+            h = self.activation(torch.mm(z, self.w.view(self.nd, 1)) + self.b)
+            psi = grad(h, z, grad_outputs=torch.ones_like(h), create_graph=True, only_inputs=True)[0]
         u_dot_psi = torch.mm(psi, self.u.view(self.nd, 1))
         detgrad = 1 + u_dot_psi
         return detgrad
