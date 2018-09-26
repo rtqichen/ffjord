@@ -194,8 +194,9 @@ def save_fig1_1d_ptd(model, data_samples, savedir, ntimes=101, memory=0.01, devi
     # plt.plot(znp,np.exp(np.array(logp)[0,:,0]))
 
  
+    plt.rcParams.update({'font.size': 13})
     fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True,
-                                                            gridspec_kw={'height_ratios': [1,22, 1]},
+                                                            gridspec_kw={'height_ratios': [1,5, 1]},
                                                             figsize=(4, 7))
     fig.set_tight_layout({'pad': 0.1, 'h_pad': -1.0})
     # axes[1].set_aspect(30, share=True)
@@ -204,18 +205,34 @@ def save_fig1_1d_ptd(model, data_samples, savedir, ntimes=101, memory=0.01, devi
     # axes[0].plot(znp,np.exp(np.array(logp)[0,:,0]))
     axes[0].scatter(znp,np.exp(np.array(logp)[0,:,0]),s=0.5,marker=None,linestyle='-',c=np.exp(np.array(logp)[0,:,0]),cmap='viridis')
     axes[0].set_xlim(-4,4)
-    axes[0].axis('off')
+    axes[0].set_ylabel(r"$p(z(t_1))$",labelpad=20)
+    axes[0].set_yticks([])
+    axes[0].get_xaxis().set_visible(False)
+    axes[0].spines['top'].set_visible(False)
+    axes[0].spines['right'].set_visible(False)
+    # axes[0].spines['bottom'].set_visible(False)
+    # axes[0].axis('off')
 
-    axes[1].imshow(probs,cmap='viridis',extent=[-4,4,0,0.5],aspect=30)
-    axes[1].streamplot(xs,ts,dxs,dts,color='white',linewidth=0.7,density=(0.5,2.))
+    axes[1].imshow(probs,cmap='viridis',extent=[-4,4,0,0.5],aspect=10)
+    axes[1].streamplot(xs,ts,dxs,dts,color='white',linewidth=0.9,density=(0.4,2.5))
     # axes[1].set_axis_off()
     axes[1].set_xlim(-4,4)
-    axes[1].axis('off')
+    # axes[1].axis('off')
+    axes[1].set_yticks([0,0.5])
+    axes[1].set_yticklabels([r"$0$",r"$1$"])
+    axes[1].set_ylabel(r"$t$")
+    axes[1].get_xaxis().set_visible(False)
 
     # axes[2].plot(znp,-np.exp(np.array(logp)[-1,:,0]))
-    axes[2].scatter(znp,-np.exp(np.array(logp)[-1,:,0]),s=0.5,marker=None,linestyle='-',c=np.exp(np.array(logp)[-1,:,0]),cmap='viridis')
-    axes[2].axis('off')
+    axes[2].scatter(znp,np.exp(np.array(logp)[-1,:,0]),s=0.5,marker=None,linestyle='-',c=np.exp(np.array(logp)[-1,:,0]),cmap='viridis')
     axes[2].set_xlim(-4,4)
+    axes[2].set_ylabel(r"$p(z(t_0))$",labelpad=20)
+    axes[2].set_xlabel(r"$z$")
+    axes[2].set_yticks([])
+    axes[2].set_xticks([])
+    # axes[2].get_xaxis().set_visible(False)
+    axes[2].spines['top'].set_visible(False)
+    axes[2].spines['right'].set_visible(False)
 
     # fig.subplots_adjust(hspace=0.)
     pos0 = axes[0].get_position(original=False)
@@ -224,7 +241,7 @@ def save_fig1_1d_ptd(model, data_samples, savedir, ntimes=101, memory=0.01, devi
 
     print(pos0.y0)
     print(pos1.y0+pos1.height)
-    axes[0].set_position([pos1.x0,pos0.y0+0.1,pos1.x1,pos0.height])
+    axes[0].set_position([pos1.x0,pos0.y0+0.4,pos1.x1,pos0.height])
     axes[2].set_position([pos1.x0,pos2.y0,pos1.x1,pos2.height])
 
     plt.savefig(os.path.join(savedir, "fig1_1d_together.pdf"),pad_inches=0,bbox_inches='tight') 
