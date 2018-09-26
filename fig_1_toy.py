@@ -1,5 +1,5 @@
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -21,13 +21,13 @@ from train_misc import create_regularization_fns, get_regularization, append_reg
 from train_misc import build_model_tabular
 
 from diagnostics.viz_toy import save_trajectory, trajectory_to_video
-from diagnostics.viz_fig1 import save_fig1
+from diagnostics.viz_fig1 import save_fig1,save_fig1_rev
 
 SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
 parser.add_argument(
-    '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons', '2spirals','rowimg'], type=str,
-    default='rowimg'
+    '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons', '2spirals','rowimg','rowimgsmol','willrow'], type=str,
+    default='willrow'
 )
 parser.add_argument(
     "--layer_type", type=str, default="concatsquash",
@@ -57,7 +57,7 @@ parser.add_argument('--bn_lag', type=float, default=0)
 
 parser.add_argument('--niters', type=int, default=2500)
 parser.add_argument('--batch_size', type=int, default=100)
-parser.add_argument('--test_batch_size', type=int, default=1000)
+parser.add_argument('--test_batch_size', type=int, default=100)
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--weight_decay', type=float, default=1e-5)
 
@@ -127,9 +127,13 @@ def compute_loss(args, model, batch_size=None):
     return loss
 
 if __name__ == '__main__':
+    x= toy_data.inf_train_gen(args.data, batch_size=args.batch_size)
+    plt.imshow(x)
+    plt.savefig('testwill.png')
 
     regularization_fns, regularization_coeffs = create_regularization_fns(args)
-    model = build_model_tabular(args, 200, regularization_fns).to(device)
+    # model = build_model_tabular(args, 200, regularization_fns).to(device)
+    model = build_model_tabular(args, 50, regularization_fns).to(device)
     if args.spectral_norm: add_spectral_norm(model)
     set_cnf_options(args, model)
 
@@ -140,7 +144,7 @@ if __name__ == '__main__':
 
     # restore parameters
     if args.resume is not None:
-        checkpt = torch.load(args.resume, map_location=lambda storage, loc: storage)
+        checkpt = torch.load(args.resume+'/checkpt.pth', map_location=lambda storage, loc: storage)
         model.load_state_dict(checkpt["state_dict"])
         if "optim_state_dict" in checkpt.keys():
             optimizer.load_state_dict(checkpt["optim_state_dict"])
@@ -216,6 +220,11 @@ if __name__ == '__main__':
                     }, os.path.join(args.save, 'checkpt.pth'))
                 model.train()
 
+            save_fig1_path = os.path.join(args.resume, 'fig1')
+            logger.info('Plotting fig1 to {}'.format(save_fig1_path))
+            data_samples = toy_data.inf_train_gen(args.data, batch_size=1)
+            save_fig1(model, data_samples, save_fig1_path, device=device)
+            save_fig1_rev(model, data_samples, save_fig1_path, device=device)
         # if itr % args.viz_freq == 0:
         #     with torch.no_grad():
         #         model.eval()
@@ -231,16 +240,17 @@ if __name__ == '__main__':
         #         fig_filename = os.path.join(args.save, 'figs', '{:04d}.jpg'.format(itr))
         #         utils.makedirs(os.path.dirname(fig_filename))
         #         plt.savefig(fig_filename)
-        #         plt.close()
+        #         plt.close()model
         #         model.train()
 
         end = time.time()
 
     logger.info('Training has finished.')
 
-    save_fig1_path = os.path.join(args.save, 'fig1')
+    save_fig1_path = os.path.join(args.resume, 'fig1')
     logger.info('Plotting fig1 to {}'.format(save_fig1_path))
     data_samples = toy_data.inf_train_gen(args.data, batch_size=1)
     save_fig1(model, data_samples, save_fig1_path, device=device)
+    save_fig1_rev(model, data_samples, save_fig1_path, device=device)
     # save_trajectory(model, data_samples, save_traj_dir, device=device)
     # trajectory_to_video(save_traj_dir)

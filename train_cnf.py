@@ -408,9 +408,9 @@ if __name__ == "__main__":
                         "optim_state_dict": optimizer.state_dict(),
                     }, os.path.join(args.save, "checkpt.pth"))
 
-        # visualize samples and density
-        with torch.no_grad():
-            fig_filename = os.path.join(args.save, "figs", "{:04d}.jpg".format(epoch))
-            utils.makedirs(os.path.dirname(fig_filename))
-            generated_samples = model(fixed_z, reverse=True).view(-1, *data_shape)
-            save_image(generated_samples, fig_filename, nrow=10)
+            # visualize samples and density
+            with torch.no_grad():
+                fig_filename = os.path.join(args.save, "figs", "{:04d}.jpg".format(epoch))
+                utils.makedirs(os.path.dirname(fig_filename))
+                generated_samples = model(fixed_z, reverse=True).view(-1, *data_shape)
+                save_image(generated_samples, fig_filename, nrow=10)

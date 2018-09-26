@@ -2,9 +2,10 @@ import os
 import math
 import numpy as np
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import torch
+from scipy import interpolate as interp
 
 
 def standard_normal_logprob(z):
@@ -21,7 +22,8 @@ def save_fig1(model, data_samples, savedir, ntimes=101, memory=0.01, device='cpu
     model.eval()
 
     #  Sample from prior
-    z_samples = torch.randn(1, 200).to(device)
+    # z_samples = torch.randn(20, 200).to(device)
+    z_samples = torch.randn(20, 50).to(device)
 
     with torch.no_grad():
     #     # We expect the model is a chain of CNF layers wrapped in a SequentialFlow container.
@@ -34,14 +36,201 @@ def save_fig1(model, data_samples, savedir, ntimes=101, memory=0.01, device='cpu
             z_traj, _ = cnf(z_samples, logp_samples, integration_times=integration_times, reverse=True)
             z_traj = z_traj.cpu().numpy()
 
- 
-        print(integration_times.shape)
-        print(z_traj[:,0,:].shape)
 
-        plt.imshow(z_traj[:,0,:])
-        # plt.show()
         makedirs(savedir)
-        plt.savefig(os.path.join(savedir, "fig1.jpg"))
+        for sample in range(z_traj.shape[1]):
+            plt.clf()
+            plt.imshow(z_traj[:,sample,:],cmap='plasma')
+            plt.xaxis
+            plt.savefig(os.path.join(savedir, "fig1_"+str(sample)+".jpg"))
+
+def save_fig1_rev(model, data_samples, savedir, ntimes=101, memory=0.01, device='cpu'):
+    model.eval()
+    data_samples=torch.tensor(data_samples).float().cuda()
+
+    #  Sample from prior
+    # z_samples = torch.randn(20, 200).to(device)
+    z_samples = torch.randn(20, 50).to(device)
+
+    with torch.no_grad():
+    #     # We expect the model is a chain of CNF layers wrapped in a SequentialFlow container.
+        logp_samples = torch.sum(standard_normal_logprob(z_samples), 1, keepdim=True)
+        t = 0
+        for cnf in model.chain:
+            end_time = (cnf.sqrt_end_time * cnf.sqrt_end_time)
+            integration_times = torch.linspace(0, end_time, ntimes)
+
+            z_traj, _ = cnf(data_samples[0:1], logp_samples[0:1], integration_times=integration_times, reverse=False)
+            z_traj = z_traj.cpu().numpy()
+
+
+        print('zt',z_traj.shape)
+        makedirs(savedir)
+        plt.clf()
+        plt.imshow(data_samples[0:1],cmap='plasma')
+        plt.savefig(os.path.join(savedir, "fig1_data.jpg"))       
+        for sample in range(z_traj.shape[1]):
+            plt.clf()
+            plt.imshow(z_traj[:,sample,:],cmap='plasma')
+            plt.savefig(os.path.join(savedir, "fig1_forward"+str(sample)+".jpg"))       
+
+def save_fig1_1d_ptd(model, data_samples, savedir, ntimes=101, memory=0.01, device='cpu'):
+    model.eval()
+    
+
+    # data_samples=torch.tensor(data_samples).float().cuda()
+
+    #  Sample from prior
+    z_samples = torch.randn(30, 1).to(device)
+
+    # linspace for plotting
+    npts=500
+
+    z_samples = np.linspace(-4,4,100)
+    z_samples = torch.from_numpy(z_samples[:,np.newaxis]).type(torch.float32).to(device)
+    znp = np.linspace(-4,4,npts)
+    z = torch.from_numpy(znp[:,np.newaxis]).type(torch.float32).to(device)
+                    
+    with torch.no_grad():
+    #     # We expect the model is a chain of CNF layers wrapped in a SequentialFlow container.
+        logp_samples = torch.sum(standard_normal_logprob(z_samples), -1, keepdim=True)
+        logp_z = torch.sum(standard_normal_logprob(z), -1, keepdim=True)
+        t = 0
+        for cnf in model.chain:
+            end_time = (cnf.sqrt_end_time * cnf.sqrt_end_time)
+            integration_times = torch.linspace(0, end_time, ntimes)
+
+            def log_prob(t):
+                z_traj,dlogp_traj = cnf(z,torch.zeros_like(logp_z),integration_times = torch.tensor([t,end_time]),reverse = False)
+                z_traj = z_traj
+                logp_z_traj = standard_normal_logprob(z_traj)
+                dlogp_traj = dlogp_traj.cpu().numpy()
+                return logp_z_traj.cpu().numpy() - dlogp_traj
+
+            
+            logp = []
+            for t in integration_times:
+                logp.append(log_prob(t))
+
+            # The differential equation evaluated at some t and x.
+            def _differential(t, x):
+                t = torch.tensor(t).to(device)
+                x = torch.tensor(x).to(device)
+                return cnf.odefunc.odefunc.diffeq(t, x)
+
+            ts = np.linspace(0,end_time,100)
+            xs = np.linspace(-4,4,100)
+            dxs = torch.zeros(ts.shape[0],xs.shape[0])
+            
+            for ti , t in enumerate(ts):
+                for xi,x in enumerate(xs):
+                    dxs[ti,xi]= -_differential(t,[x])
+
+            dxs = torch.tensor(dxs)
+            dts = torch.ones_like(dxs)
+
+
+            # z_traj, logp_traj= cnf(z, logp_z, integration_times=integration_times, reverse=False)
+            z_traj, logp_traj= cnf(z_samples, logp_samples, integration_times=integration_times, reverse=True)
+            # z_traj, logp_traj= cnf(z, logp_z, integration_times=integration_times, reverse=True)
+            # z_traj = z_traj.cpu().numpy()
+            # logp_traj= logp_traj.cpu().numpy()
+
+    makedirs(savedir)
+    plt.clf()
+    # plt.imshow(logp_traj[:,:,0],cmap='plasma')
+    # plt.imshow(np.exp(np.array(logp)[:,:,0]),cmap='plasma',extent=[-4,4,0,1])
+    # plt.tight_layout()
+    # plt.savefig(os.path.join(savedir, "fig1_1d.jpg"))       
+
+    # plt.clf()
+    # plt.plot(z_traj[:,:,0].cpu().numpy())
+    # plt.savefig(os.path.join(savedir, "fig1_1d_traj.jpg"))       
+
+    # nm = matplotlib.colors.Normalize(0.05,0.45,True)
+
+    probs = np.exp(np.array(logp)[:,:,0])
+    maxs = np.amax(probs,axis=1,keepdims=True)
+    probs = probs / maxs
+    
+
+    # plt.clf()
+    # plt.axis('off')
+    # plt.tight_layout()
+    # plt.imshow(probs,cmap='viridis',extent=[-4,4,0,0.5],aspect=40.)
+    # plt.streamplot(xs,ts,dxs,dts,color='white',linewidth=0.7,density=(0.5,2.))
+    # plt.savefig(os.path.join(savedir, "fig1_1d_stream.pdf"),pad_inches=0,bbox_inches='tight')       
+
+    # plt.clf()
+    # plt.axis('off')
+    # plt.tight_layout()
+    # plt.plot(np.exp(np.array(logp)[0,:,0]))
+    # plt.savefig(os.path.join(savedir, "fig1_1d_t1.pdf"),pad_inches=0,bbox_inches='tight')       
+
+    # plt.clf()
+    # plt.axis('off')
+    # plt.tight_layout()
+    # plt.plot(np.exp(np.array(logp)[-1,:,0]))
+    # plt.savefig(os.path.join(savedir, "fig1_1d_t0.pdf"),pad_inches=0,bbox_inches='tight')       
+
+
+    # plt.clf()
+    # plt.axis('off')
+    # plt.tight_layout()
+    # plt.subplot2grid((8,1),(0,0))
+    # plt.axis('off')
+    # plt.tight_layout()
+    # plt.plot(znp,np.exp(np.array(logp)[-1,:,0]))
+
+    # plt.subplot2grid((8,1),(1,0),rowspan=6)
+    # plt.axis('off')
+    # plt.tight_layout()
+    # plt.imshow(probs,cmap='viridis',extent=[-4,4,0,0.5],aspect=30.)
+    # plt.streamplot(xs,ts,dxs,dts,color='white',linewidth=0.7,density=(0.5,2.))
+
+    # plt.subplot2grid((8,1),(7,0))
+    # plt.axis('off')
+    # plt.tight_layout()
+    # plt.plot(znp,np.exp(np.array(logp)[0,:,0]))
+
+ 
+    fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True,
+                                                            gridspec_kw={'height_ratios': [1,22, 1]},
+                                                            figsize=(4, 7))
+    fig.set_tight_layout({'pad': 0.1, 'h_pad': -1.0})
+    # axes[1].set_aspect(30, share=True)
+    # plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=None)
+
+    # axes[0].plot(znp,np.exp(np.array(logp)[0,:,0]))
+    axes[0].scatter(znp,np.exp(np.array(logp)[0,:,0]),s=0.5,marker=None,linestyle='-',c=np.exp(np.array(logp)[0,:,0]),cmap='viridis')
+    axes[0].set_xlim(-4,4)
+    axes[0].axis('off')
+
+    axes[1].imshow(probs,cmap='viridis',extent=[-4,4,0,0.5],aspect=30)
+    axes[1].streamplot(xs,ts,dxs,dts,color='white',linewidth=0.7,density=(0.5,2.))
+    # axes[1].set_axis_off()
+    axes[1].set_xlim(-4,4)
+    axes[1].axis('off')
+
+    # axes[2].plot(znp,-np.exp(np.array(logp)[-1,:,0]))
+    axes[2].scatter(znp,-np.exp(np.array(logp)[-1,:,0]),s=0.5,marker=None,linestyle='-',c=np.exp(np.array(logp)[-1,:,0]),cmap='viridis')
+    axes[2].axis('off')
+    axes[2].set_xlim(-4,4)
+
+    # fig.subplots_adjust(hspace=0.)
+    pos0 = axes[0].get_position(original=False)
+    pos1 = axes[1].get_position(original=False)
+    pos2 = axes[2].get_position(original=False)
+
+    print(pos0.y0)
+    print(pos1.y0+pos1.height)
+    axes[0].set_position([pos1.x0,pos0.y0+0.1,pos1.x1,pos0.height])
+    axes[2].set_position([pos1.x0,pos2.y0,pos1.x1,pos2.height])
+
+    plt.savefig(os.path.join(savedir, "fig1_1d_together.pdf"),pad_inches=0,bbox_inches='tight') 
+# if __name__ == '__main__':
+
+    
 
             # plt.figure(figsize=(8, 8))
             # for _ in range(z_traj.shape[0]):
