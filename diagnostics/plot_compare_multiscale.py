@@ -37,16 +37,20 @@ mnist_multiscale_loss, mnist_multiscale_nfes = get_values(MNIST_MULTISCALE)
 import brewer2mpl
 line_colors = brewer2mpl.get_map('Set2', 'qualitative', 4).mpl_colors
 dark_colors = brewer2mpl.get_map('Dark2', 'qualitative', 4).mpl_colors
-plt.style.use('ggplot')
 
-plt.figure(figsize=(6, 4))
+import seaborn as sns
+sns.set_style("whitegrid")
+colors = ["windows blue", "amber", "greyish", "faded green", "dusty purple"]
+sns.palplot(sns.xkcd_palette(colors))
+
+plt.figure(figsize=(4, 3))
 plt.scatter(mnist_singlescale_nfes, mnist_singlescale_loss, color=line_colors[1], label="Single FFJORD")
 plt.scatter(mnist_multiscale_nfes, mnist_multiscale_loss, color=line_colors[2], label="Multiscale FFJORD")
 
 plt.ylim([0.9, 2])
-plt.legend(fontsize=14)
-plt.xlabel("NFE", fontsize=24)
-plt.ylabel("Bits/dim", fontsize=24)
+plt.legend(frameon=True, fontsize=10.5)
+plt.xlabel("NFE", fontsize=18)
+plt.ylabel("Bits/dim", fontsize=18)
 
 ax = plt.gca()
 ax.tick_params(axis='both', which='major', labelsize=14)

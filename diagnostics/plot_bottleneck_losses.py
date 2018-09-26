@@ -44,21 +44,27 @@ bottleneck_est_loss = scipy.signal.medfilt(bottleneck_est_loss, 21)
 rademacher_bottleneck_loss = scipy.signal.medfilt(rademacher_bottleneck_loss, 21)
 rademacher_bottleneck_est_loss = scipy.signal.medfilt(rademacher_bottleneck_est_loss, 21)
 
+import seaborn as sns
+sns.set_style("whitegrid")
+colors = ["windows blue", "amber", "greyish", "faded green", "dusty purple"]
+sns.palplot(sns.xkcd_palette(colors))
+
 import brewer2mpl
 line_colors = brewer2mpl.get_map('Set2', 'qualitative', 4).mpl_colors
 dark_colors = brewer2mpl.get_map('Dark2', 'qualitative', 4).mpl_colors
-plt.style.use('ggplot')
+# plt.style.use('ggplot')
 
-plt.figure(figsize=(4, 2.5))
-plt.plot(np.arange(len(bottleneck_loss)) / 30, bottleneck_loss, color=line_colors[1], label="Gaussian w/o Bottleneck Trick")
-plt.plot(np.arange(len(bottleneck_est_loss)) / 30, bottleneck_est_loss, color=dark_colors[1], label="Gaussian w/ Bottleneck Trick")
-plt.plot(np.arange(len(rademacher_bottleneck_loss)) / 30, rademacher_bottleneck_loss, color=line_colors[2], label="Rademacher w/o Bottleneck Trick")
-plt.plot(np.arange(len(rademacher_bottleneck_est_loss)) / 30, rademacher_bottleneck_est_loss, color=dark_colors[2], label="Rademacher w/ Bottleneck Trick")
+plt.figure(figsize=(4, 3))
+plt.plot(np.arange(len(bottleneck_loss)) / 30, bottleneck_loss, ':', color=line_colors[1], label="Gaussian w/o Trick")
+plt.plot(np.arange(len(bottleneck_est_loss)) / 30, bottleneck_est_loss, color=dark_colors[1], label="Gaussian w/ Trick")
+plt.plot(np.arange(len(rademacher_bottleneck_loss)) / 30, rademacher_bottleneck_loss, ':', color=line_colors[2], label="Rademacher w/o Trick")
+plt.plot(np.arange(len(rademacher_bottleneck_est_loss)) / 30, rademacher_bottleneck_est_loss, color=dark_colors[2], label="Rademacher w/ Trick")
 
-plt.legend(fontsize=7)
-plt.ylim([1, 1.5])
+plt.legend(frameon=True, fontsize=10.5, loc='upper right')
+plt.ylim([1.1, 1.7])
 # plt.yscale("log", nonposy='clip')
-plt.xlabel("Epoch", fontsize=14)
-plt.ylabel("Bits/dim", fontsize=14)
+plt.xlabel("Epoch", fontsize=18)
+plt.ylabel("Bits/dim", fontsize=18)
+plt.xlim([0, 170])
 plt.tight_layout()
 plt.savefig('bottleneck_losses.pdf')

@@ -42,7 +42,7 @@ for i, (dim, nfes) in enumerate(zip(dims, nfe_all)):
     nfes = scipy.ndimage.gaussian_filter(nfes, 101)
     plt.plot(xx, nfes, '--', label='Dim {}'.format(dim))
 
-plt.legend(frameon=True)
+plt.legend(frameon=True, fontsize=10.5)
 plt.xlabel('Epoch', fontsize=18)
 plt.ylabel('NFE', fontsize=18)
 plt.tight_layout()
