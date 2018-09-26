@@ -7,3 +7,4 @@ from .normalization import *
 from . import diffeq_layers
 from .coupling import *
 from .glow import *
+from .norm_flows import *

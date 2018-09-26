@@ -110,7 +110,7 @@ def plt_samples(samples, ax, npts=100, title="$x ~ p(x)$"):
 
 
 def visualize_transform(
-    potential_or_samples, prior_sample, prior_density, transform, inverse_transform=None, samples=True, npts=100,
+    potential_or_samples, prior_sample, prior_density, transform=None, inverse_transform=None, samples=True, npts=100,
     memory=100, device="cpu"
 ):
     """Produces visualization for the model density and samples from the model."""
@@ -128,4 +128,5 @@ def visualize_transform(
         plt_flow_density(prior_density, inverse_transform, ax, npts=npts, memory=memory, device=device)
 
     ax = plt.subplot(1, 3, 3, aspect="equal")
-    plt_flow_samples(prior_sample, transform, ax, npts=npts, memory=memory, device=device)
+    if transform is not None:
+        plt_flow_samples(prior_sample, transform, ax, npts=npts, memory=memory, device=device)

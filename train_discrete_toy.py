@@ -26,6 +26,7 @@ parser.add_argument(
 
 parser.add_argument('--depth', help='number of coupling layers', type=int, default=10)
 parser.add_argument('--glow', type=eval, choices=[True, False], default=False)
+parser.add_argument('--nf', type=eval, choices=[True, False], default=False)
 
 parser.add_argument('--niters', type=int, default=100001)
 parser.add_argument('--batch_size', type=int, default=100)
@@ -59,20 +60,30 @@ device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 
 
 def construct_model():
 
-    chain = []
-    for i in range(args.depth):
-        if args.glow: chain.append(layers.BruteForceLayer(2))
-        chain.append(layers.CouplingLayer(2, swap=i % 2 == 0))
-    return layers.SequentialFlow(chain)
+    if args.nf:
+        chain = []
+        for i in range(args.depth):
+            chain.append(layers.PlanarFlow(2))
+        return layers.SequentialFlow(chain)
+    else:
+        chain = []
+        for i in range(args.depth):
+            if args.glow: chain.append(layers.BruteForceLayer(2))
+            chain.append(layers.CouplingLayer(2, swap=i % 2 == 0))
+        return layers.SequentialFlow(chain)
 
 
 def get_transforms(model):
 
-    def sample_fn(z, logpz=None):
-        if logpz is not None:
-            return model(z, logpz, reverse=True)
-        else:
-            return model(z, reverse=True)
+    if args.nf:
+        sample_fn = None
+    else:
+
+        def sample_fn(z, logpz=None):
+            if logpz is not None:
+                return model(z, logpz, reverse=True)
+            else:
+                return model(z, reverse=True)
 
     def density_fn(x, logpx=None):
         if logpx is not None:
