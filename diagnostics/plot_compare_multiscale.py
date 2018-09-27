@@ -44,8 +44,8 @@ colors = ["windows blue", "amber", "greyish", "faded green", "dusty purple"]
 sns.palplot(sns.xkcd_palette(colors))
 
 plt.figure(figsize=(4, 3))
-plt.scatter(mnist_singlescale_nfes, mnist_singlescale_loss, color=line_colors[1], label="Single FFJORD")
-plt.scatter(mnist_multiscale_nfes, mnist_multiscale_loss, color=line_colors[2], label="Multiscale FFJORD")
+plt.scatter(mnist_singlescale_nfes[::10], mnist_singlescale_loss[::10], color=line_colors[1], label="Single FFJORD")
+plt.scatter(mnist_multiscale_nfes[::10], mnist_multiscale_loss[::10], color=line_colors[2], label="Multiscale FFJORD")
 
 plt.ylim([0.9, 2])
 plt.legend(frameon=True, fontsize=10.5)
