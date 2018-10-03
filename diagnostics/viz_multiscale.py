@@ -55,7 +55,7 @@ parser.add_argument('--save', type=str, default='img_trajectory')
 
 args = parser.parse_args()
 
-BATCH_SIZE = 100
+BATCH_SIZE = 8 * 8
 
 
 def add_noise(x):
