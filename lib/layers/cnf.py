@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from integrate import odeint_adjoint as odeint
+from torchdiffeq import odeint_adjoint as odeint
 
 from .wrappers.cnf_regularization import RegularizedODEfunc
 

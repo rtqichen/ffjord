@@ -6,7 +6,7 @@ from .VAE import VAE
 import lib.layers.diffeq_layers as diffeq_layers
 from lib.layers.odefunc import NONLINEARITIES
 
-from integrate import odeint_adjoint as odeint
+from torchdiffeq import odeint_adjoint as odeint
 
 
 def get_hidden_dims(args):
