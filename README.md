@@ -8,7 +8,7 @@ Install `torchdiffeq` from https://github.com/rtqichen/torchdiffeq.
 
 ## Usage
 
-Different scripts are provided for different datasets.
+Different scripts are provided for different datasets. To see all options, use the `-h` flag.
 
 Toy 2d:
 ```
@@ -29,7 +29,8 @@ VAE Experiments (based on [Sylvester VAE](https://github.com/riannevdberg/sylves
 ```
 python train_vae_flow.py
 ```
-To see all options, use the `-h` flag.
+
+Glow / Real NVP experiments are run using `train_discrete_toy.py` and `train_discrete_tabular.py`.
 
 ## Datasets
 
