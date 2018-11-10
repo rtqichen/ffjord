@@ -12,12 +12,12 @@ Different scripts are provided for different datasets. To see all options, use t
 
 Toy 2d:
 ```
-python train_toy.py
+python train_toy.py --data 8gaussians --dims 64-64-64 --layer_type concatsquash --save experiment1
 ```
 
 Tabular datasets from [MAF](https://github.com/gpapamak/maf):
 ```
-python train_tabular.py
+python train_tabular.py --data miniboone --nhidden 2 --hdim_factor 20 --num_blocks 1 --nonlinearity softplus --batch_size 1000 --lr 1e-3
 ```
 
 MNIST/CIFAR10:
@@ -39,9 +39,6 @@ Follow instructions from https://github.com/gpapamak/maf and place them in `data
 
 ### VAE datasets
 Follow instructions from https://github.com/riannevdberg/sylvester-flows and place them in `data/`.
-
-## Contact
-Email rtqichen@cs.toronto.edu if you have questions about the code.
 
 ## Bibtex
 ```
