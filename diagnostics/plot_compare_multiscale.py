@@ -43,11 +43,11 @@ sns.set_style("whitegrid")
 colors = ["windows blue", "amber", "greyish", "faded green", "dusty purple"]
 sns.palplot(sns.xkcd_palette(colors))
 
-plt.figure(figsize=(4, 3))
+plt.figure(figsize=(4, 2.6))
 plt.scatter(mnist_singlescale_nfes[::10], mnist_singlescale_loss[::10], color=line_colors[1], label="Single FFJORD")
 plt.scatter(mnist_multiscale_nfes[::10], mnist_multiscale_loss[::10], color=line_colors[2], label="Multiscale FFJORD")
 
-plt.ylim([0.9, 2])
+plt.ylim([0.9, 1.25])
 plt.legend(frameon=True, fontsize=10.5)
 plt.xlabel("NFE", fontsize=18)
 plt.ylabel("Bits/dim", fontsize=18)

@@ -35,7 +35,7 @@ for dim, dirname in zip(dims, dirs):
 
     nfe_all.append(nfes_)
 
-plt.figure(figsize=(4, 3))
+plt.figure(figsize=(4, 2.4))
 for i, (dim, nfes) in enumerate(zip(dims, nfe_all)):
     nfes = np.array(nfes)
     xx = (np.arange(len(nfes)) + 1) / 50
@@ -45,5 +45,6 @@ for i, (dim, nfes) in enumerate(zip(dims, nfe_all)):
 plt.legend(frameon=True, fontsize=10.5)
 plt.xlabel('Epoch', fontsize=18)
 plt.ylabel('NFE', fontsize=18)
+plt.xlim([0, 200])
 plt.tight_layout()
 plt.savefig("nfes_vs_dim_vae.pdf")
