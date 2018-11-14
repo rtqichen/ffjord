@@ -141,7 +141,7 @@ if __name__ == '__main__':
     import lib.toy_data as toy_data
     from train_misc import count_parameters
     from train_misc import set_cnf_options, add_spectral_norm, create_regularization_fns
-    from train_misc import build_model_toy2d
+    from train_misc import build_model_tabular
 
     def get_ckpt_model_and_data(args):
         # Load checkpoint.
@@ -151,7 +151,7 @@ if __name__ == '__main__':
 
         # Construct model and restore checkpoint.
         regularization_fns, regularization_coeffs = create_regularization_fns(ckpt_args)
-        model = build_model_toy2d(ckpt_args, regularization_fns).to(device)
+        model = build_model_tabular(ckpt_args, 2, regularization_fns).to(device)
         if ckpt_args.spectral_norm: add_spectral_norm(model)
         set_cnf_options(ckpt_args, model)
 

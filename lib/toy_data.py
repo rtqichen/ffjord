@@ -86,3 +86,5 @@ def inf_train_gen(data, rng=None, batch_size=200):
         x = rng.rand(batch_size) * 5 - 2.5
         y = np.sin(x) * 2.5
         return np.stack((x, y), 1)
+    else:
+        return inf_train_gen("8gaussians", rng, batch_size)

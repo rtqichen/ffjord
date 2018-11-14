@@ -43,3 +43,14 @@ Follow instructions from https://github.com/gpapamak/maf and place them in `data
 
 ### VAE datasets
 Follow instructions from https://github.com/riannevdberg/sylvester-flows and place them in `data/`.
+
+## Image-based Flow
+
+Here's a fun script that you can use to create your own 2D flow from an image!
+```
+python train_img2d.py --img imgs/github.png --save github_flow
+```
+
+<p align="center">
+<img align="middle" src="./assets/github_flow.gif" width="400" height="400" />
+</p>
