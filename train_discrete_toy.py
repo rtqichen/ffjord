@@ -43,7 +43,7 @@ parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df
 parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
 
 parser.add_argument('--save', type=str, default='experiments/cnf')
-parser.add_argument('--viz_freq', type=int, default=5000)
+parser.add_argument('--viz_freq', type=int, default=1000)
 parser.add_argument('--val_freq', type=int, default=1000)
 parser.add_argument('--log_freq', type=int, default=100)
 parser.add_argument('--gpu', type=int, default=0)
@@ -120,7 +120,7 @@ if __name__ == '__main__':
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = optim.Adamax(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     time_meter = utils.RunningAverageMeter(0.98)
     loss_meter = utils.RunningAverageMeter(0.98)
