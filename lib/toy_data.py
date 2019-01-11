@@ -1,6 +1,7 @@
 import numpy as np
 import sklearn
 import sklearn.datasets
+from sklearn.utils import shuffle as util_shuffle
 
 
 # Dataset iterator
@@ -19,6 +20,36 @@ def inf_train_gen(data, rng=None, batch_size=200):
         data = data.astype("float32")
         data *= 3
         return data
+
+    elif data == "rings":
+        n_samples4 = n_samples3 = n_samples2 = batch_size // 4
+        n_samples1 = batch_size - n_samples4 - n_samples3 - n_samples2
+
+        # so as not to have the first point = last point, we set endpoint=False
+        linspace4 = np.linspace(0, 2 * np.pi, n_samples4, endpoint=False)
+        linspace3 = np.linspace(0, 2 * np.pi, n_samples3, endpoint=False)
+        linspace2 = np.linspace(0, 2 * np.pi, n_samples2, endpoint=False)
+        linspace1 = np.linspace(0, 2 * np.pi, n_samples1, endpoint=False)
+
+        circ4_x = np.cos(linspace4)
+        circ4_y = np.sin(linspace4)
+        circ3_x = np.cos(linspace4) * 0.75
+        circ3_y = np.sin(linspace3) * 0.75
+        circ2_x = np.cos(linspace2) * 0.5
+        circ2_y = np.sin(linspace2) * 0.5
+        circ1_x = np.cos(linspace1) * 0.25
+        circ1_y = np.sin(linspace1) * 0.25
+
+        X = np.vstack([
+            np.hstack([circ4_x, circ3_x, circ2_x, circ1_x]),
+            np.hstack([circ4_y, circ3_y, circ2_y, circ1_y])
+        ]).T * 3.0
+        X = util_shuffle(X, random_state=rng)
+
+        # Add noise
+        X = X + rng.normal(scale=0.08, size=X.shape)
+
+        return X.astype("float32")
 
     elif data == "moons":
         data = sklearn.datasets.make_moons(n_samples=batch_size, noise=0.1)[0]
