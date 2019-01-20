@@ -28,8 +28,8 @@ from train_misc import build_model_tabular, count_parameters
 SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
 parser.add_argument(
-    '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons', '2spirals', 'checkerboard'], type=str,
-    default='pinwheel'
+    '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons', '2spirals', 'checkerboard', 'rings'],
+    type=str, default='pinwheel'
 )
 
 parser.add_argument('--discrete', action='store_true')
@@ -110,14 +110,15 @@ if __name__ == '__main__':
 
     if args.discrete:
         model = construct_discrete_model().to(device)
+        model.load_state_dict(torch.load(args.checkpt)['state_dict'])
     else:
         model = build_model_tabular(args, 2).to(device)
 
-    sd = torch.load(args.checkpt)['state_dict']
-    fixed_sd = {}
-    for k, v in sd.items():
-        fixed_sd[k.replace('odefunc.odefunc', 'odefunc')] = v
-    model.load_state_dict(fixed_sd)
+        sd = torch.load(args.checkpt)['state_dict']
+        fixed_sd = {}
+        for k, v in sd.items():
+            fixed_sd[k.replace('odefunc.odefunc', 'odefunc')] = v
+        model.load_state_dict(fixed_sd)
 
     print(model)
     print("Number of trainable parameters: {}".format(count_parameters(model)))
