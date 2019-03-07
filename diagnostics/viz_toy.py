@@ -107,7 +107,7 @@ def save_trajectory(model, data_samples, savedir, ntimes=101, memory=0.01, devic
                 zs = torch.from_numpy(np.stack([x, y], -1).reshape(K * K, 2)).to(device, torch.float32)
                 logps = torch.zeros(zs.shape[0], 1).to(device, torch.float32)
                 dydt = cnf.odefunc(integration_times[t], (zs, logps))[0]
-                dydt = -dydt.cpu().numpy()
+                dydt = -dydt.cpu().detach().numpy()
                 dydt = dydt.reshape(K, K, 2)
 
                 logmag = 2 * np.log(np.hypot(dydt[:, :, 0], dydt[:, :, 1]))
