@@ -64,10 +64,10 @@ def save_density_traj(model, data_samples, savedir, ntimes=101, memory=0.01, dev
                 yy = z[:, 1].reshape(npts, npts)
                 qz = np.exp(logqz).reshape(npts, npts)
 
-                plt.pcolormesh(xx, yy, qz)
+                plt.pcolormesh(xx, yy, qz, cmap='binary')
                 ax.set_xlim(-4, 4)
                 ax.set_ylim(-4, 4)
-                cmap = matplotlib.cm.get_cmap(None)
+                cmap = matplotlib.cm.get_cmap('binary')
                 ax.set_axis_bgcolor(cmap(0.))
                 ax.invert_yaxis()
                 ax.get_xaxis().set_ticks([])
