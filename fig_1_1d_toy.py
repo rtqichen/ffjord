@@ -21,7 +21,7 @@ from train_misc import create_regularization_fns, get_regularization, append_reg
 from train_misc import build_model_tabular
 
 from diagnostics.viz_toy import save_trajectory, trajectory_to_video
-from diagnostics.viz_fig1 import save_fig1,save_fig1_rev,save_fig1_1d_ptd
+from diagnostics.viz_fig1 import save_fig1,save_fig1_rev,save_fig1_1d_ptd,save_fig1_1d_ptd_timescrub
 
 SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
@@ -221,10 +221,10 @@ if __name__ == '__main__':
                     }, os.path.join(args.save, 'checkpt.pth'))
                 model.train()
 
-                save_fig1_path = os.path.join(args.resume, 'fig1')
+                save_fig1_path = os.path.join(args.resume, 'fig1_ani')
                 logger.info('Plotting fig1 to {}'.format(save_fig1_path))
                 data_samples = toy_data.inf_train_gen(args.data, batch_size=1)
-                save_fig1_1d_ptd(model, data_samples, save_fig1_path, device=device)
+                save_fig1_1d_ptd(model, data_samples, save_fig1_path, device=device,itr=itr)
 
 
                     # save_fig1_rev(model, data_samples, save_fig1_path, device=device)
@@ -252,6 +252,7 @@ if __name__ == '__main__':
     logger.info('Plotting fig1 to {}'.format(save_fig1_path))
     data_samples = toy_data.inf_train_gen(args.data, batch_size=1)
     save_fig1_1d_ptd(model, data_samples, save_fig1_path, device=device)
+    save_fig1_1d_ptd_timescrub(model, data_samples, save_fig1_path+'/scrub', device=device)
 
     logger.info('Training has finished.')
 
