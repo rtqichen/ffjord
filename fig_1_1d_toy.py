@@ -21,7 +21,7 @@ from train_misc import create_regularization_fns, get_regularization, append_reg
 from train_misc import build_model_tabular
 
 from diagnostics.viz_toy import save_trajectory, trajectory_to_video
-from diagnostics.viz_fig1 import save_fig1,save_fig1_rev,save_fig1_1d_ptd,save_fig1_1d_ptd_timescrub
+from diagnostics.viz_fig1 import save_fig1,save_fig1_rev,save_fig1_1d_ptd,save_fig1_1d_ptd_timescrub,save_fig1_1d_icml, save_fig1_1d_icml_rev
 
 SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
@@ -70,11 +70,12 @@ parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df
 parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
 
 parser.add_argument("--resume", type=str, default=None)
-parser.add_argument('--save', type=str, default='experiments/fig1')
+parser.add_argument('--save', type=str, default='experiments/fig1_1d_toy')
 parser.add_argument('--viz_freq', type=int, default=100)
 parser.add_argument('--val_freq', type=int, default=100)
 parser.add_argument('--log_freq', type=int, default=10)
 parser.add_argument('--gpu', type=int, default=0)
+parser.add_argument('--icml_plot', type=int,default=1)
 args = parser.parse_args()
 
 # logger
@@ -138,7 +139,7 @@ if __name__ == '__main__':
     if args.spectral_norm: add_spectral_norm(model)
     set_cnf_options(args, model)
 
-    logger.info(model)
+    # logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -154,6 +155,13 @@ if __name__ == '__main__':
                 for k, v in state.items():
                     if torch.is_tensor(v):
                         state[k] = cvt(v)
+    if args.icml_plot:
+        save_fig1_path = os.path.join(args.resume, 'fig1_ani')
+        logger.info('Plotting fig1 to {}'.format(save_fig1_path))
+        data_samples = toy_data.inf_train_gen(args.data, batch_size=1)
+        # save_fig1_1d_icml(model, data_samples, save_fig1_path, device=device,itr=0)
+        save_fig1_1d_icml_rev(model, data_samples, save_fig1_path, device=device,itr=0)
+        1/0
 
     time_meter = utils.RunningAverageMeter(0.93)
     loss_meter = utils.RunningAverageMeter(0.93)
@@ -203,6 +211,8 @@ if __name__ == '__main__':
             log_message = append_regularization_to_log(log_message, regularization_fns, reg_states)
 
         logger.info(log_message)
+
+
 
         if itr % args.val_freq == 0 or itr == args.niters:
             with torch.no_grad():

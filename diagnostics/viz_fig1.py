@@ -6,7 +6,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import torch
 from scipy import interpolate as interp
-
+import lib.utils as utils
 
 def standard_normal_logprob(z):
     logZ = -0.5 * math.log(2 * math.pi)
@@ -600,3 +600,473 @@ def save_fig1_1d_NF(model, data_samples, savedir, ntimes=101, memory=0.01, devic
     # model, data_samples = get_ckpt_model_and_data(args)
     # save_trajectory(model, data_samples, args.save, ntimes=args.ntimes, memory=args.memory, device=device)
     # trajectory_to_video(args.save)
+
+def save_fig1_1d_icml(model, data_samples, savedir, ntimes=101, memory=0.01, device='cpu',itr=''):
+    model.eval()
+    
+
+    # data_samples=torch.tensor(data_samples).float().cuda()
+
+    #  Sample from prior
+    z_samples = torch.randn(30, 1).to(device)
+
+    # linspace for plotting
+    npts=500
+
+    z_samples = np.linspace(-4,4,100)
+    z_samples = torch.from_numpy(z_samples[:,np.newaxis]).type(torch.float32).to(device)
+    znp = np.linspace(-4,4,npts)
+    z = torch.from_numpy(znp[:,np.newaxis]).type(torch.float32).to(device)
+                    
+    with torch.no_grad():
+    #     # We expect the model is a chain of CNF layers wrapped in a SequentialFlow container.
+        logp_samples = torch.sum(standard_normal_logprob(z_samples), -1, keepdim=True)
+        logp_z = torch.sum(standard_normal_logprob(z), -1, keepdim=True)
+        t = 0
+        for cnf in model.chain:
+            end_time = (cnf.sqrt_end_time * cnf.sqrt_end_time)
+            integration_times = torch.linspace(0, end_time, ntimes)
+
+            def log_prob(t):
+                z_traj,dlogp_traj = cnf(z,torch.zeros_like(logp_z),integration_times = torch.tensor([t,end_time]),reverse = False)
+                z_traj = z_traj
+                logp_z_traj = standard_normal_logprob(z_traj)
+                dlogp_traj = dlogp_traj.cpu().numpy()
+                return logp_z_traj.cpu().numpy() - dlogp_traj
+
+            
+            logp = []
+            for t in integration_times:
+                logp.append(log_prob(t))
+
+            # The differential equation evaluated at some t and x.
+            def _differential(t, x):
+                t = torch.tensor(t).to(device)
+                x = torch.tensor(x).to(device)
+                return cnf.odefunc.odefunc.diffeq(t, x)
+
+            ts = np.linspace(0,end_time,101)
+            xs = np.linspace(-4,4,100)
+            dxs = torch.zeros(ts.shape[0],xs.shape[0])
+            
+            for ti , t in enumerate(ts):
+                for xi,x in enumerate(xs):
+                    dxs[ti,xi]= -_differential(t,[x])
+
+            dxs = torch.tensor(dxs)
+            dts = torch.ones_like(dxs)
+
+
+            # z_traj, logp_traj= cnf(z, logp_z, integration_times=integration_times, reverse=False)
+            z_traj, logp_traj= cnf(z_samples, logp_samples, integration_times=integration_times, reverse=True)
+            # z_traj, logp_traj= cnf(z, logp_z, integration_times=integration_times, reverse=True)
+            # z_traj = z_traj.cpu().numpy()
+            # logp_traj= logp_traj.cpu().numpy()
+
+    makedirs(savedir)
+    plt.clf()
+    
+    plt.rcParams.update({'font.size': 13})
+    fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True,
+                                                            gridspec_kw={'height_ratios': [1,5, 1]},
+                                                            figsize=(4, 8))
+    fig.set_tight_layout({'pad': -1.0, 'h_pad': 0.0})
+
+
+    probs = np.exp(np.array(logp)[:,:,0])
+    maxs = np.amax(probs,axis=1,keepdims=True)
+    probs = probs
+    # probs = probs / maxs
+
+    # for smple in range(len(z_samples)):
+    for smple in [38,50,55, 59]:
+        animate = True
+        if animate:
+            Trange = range(len(integration_times))
+        else:
+            Trange = [len(integration_times)-1]
+        for T in Trange: 
+            plt.clf()
+            plt.close()
+        
+            plt.rcParams.update({'font.size': 13})
+            fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True,
+                                                                    gridspec_kw={'height_ratios': [1,5, 1]},
+                                                                    figsize=(4, 7))
+            fig.set_tight_layout({'pad': -1.0, 'h_pad': 0.0})
+
+            print("plotting ",T)
+            ztr0 = z_traj.numpy()[0,smple,0]
+            pztr0 = np.exp(np.array(logp_traj)[0,smple,0])
+            ztrT = z_traj.numpy()[T,smple,0]
+            pztrT = np.exp(np.array(logp_traj)[T,smple,0])
+
+
+            probts = np.exp(np.array(logp))[::-1]
+
+            sc0 = axes[0].scatter(znp,probts[T,:,0],s=0.5,marker=None,linestyle='-',c=probts[T,:,0],cmap='viridis',zorder=3)
+            sc0.set_clim(0.,maxs[-1][0])
+            axes[0].scatter(ztrT,[0.], color="#F012BE",s=10.,zorder=5,clip_on=False)
+            axes[0].plot([ztr0, ztr0],[0.,pztr0], color="#F012BE",linestyle='--',alpha=0.4,linewidth=0.5,zorder=2)
+            axes[0].plot([ztr0, znp[0]],[pztr0,pztr0], color="#39CCCC",linestyle='--',alpha=0.4,linewidth=0.5,clip_on=False,zorder=2)
+            axes[0].plot([ztrT, ztrT],[0.,pztrT], color="#F012BE",linestyle='--',alpha=0.8,linewidth=0.5,zorder=4)
+            axes[0].plot([ztrT, znp[0]],[pztrT,pztrT], color="#2ECC40",linestyle='--',alpha=0.8,linewidth=0.5,zorder=4)
+            axes[0].plot([znp[0], znp[0]],[pztr0,pztrT], color="#2ECC40",alpha=1.0,linewidth=1,zorder=10,clip_on=False)
+            axes[0].set_xlim(-4,4)
+            axes[0].set_ylim(0.,maxs[-1][0])
+            axes[0].set_ylabel(r"$p(z_{t})$",labelpad=20)
+            axes[0].set_yticks([min(0.9*pztr0,(pztrT+pztr0)/2)])
+            axes[0].set_yticklabels([r"$\Delta$"], color="#2ECC40")
+            axes[0].tick_params(width=0,labelsize=10)
+            axes[0].get_xaxis().set_visible(False)
+            axes[0].spines['top'].set_visible(False)
+            axes[0].spines['right'].set_visible(False)
+            # axes[0].set_clip_on(False)
+            axes[0].set_zorder(2)
+
+            axes[1].imshow(probs,cmap='viridis',extent=[-4,4,0,0.5],aspect=10)
+            axes[1].plot(z_traj[0:T,smple,0].numpy(),ts[0:T], color="#F012BE")
+            axes[1].scatter([ztr0],[0.], color="#F012BE", s=10.,zorder=5)
+            axes[1].scatter([ztrT],[ts[T]], color="#F012BE",s=10.,zorder=5,clip_on=True)
+            axes[1].scatter([ztrT],[ts[-1]], color="#F012BE",s=10.,zorder=5,clip_on=True,visible=False)#hack
+            axes[1].streamplot(xs,ts,dxs,dts,color='white',linewidth=0.3,density=(0.7,0.5),arrowsize=0.5)
+            axes[1].set_xlim(-4,4)
+            axes[1].set_yticks([0,0.5])
+            axes[1].set_yticklabels([r"$0$",r"$1$"])
+            axes[1].set_ylabel(r"$t$")
+            # axes[1].get_xaxis().set_visible(False)
+            axes[1].spines['bottom'].set_position('zero')
+            # axes[1].spines['bottom'].set_zorder(0.)
+            axes[1].spines['top'].set_position(('data',0.5))
+            # axes[1].spines['top'].set_zorder(0.)
+            axes[1].spines['left'].set_bounds(0.,0.5)
+            axes[1].spines['right'].set_bounds(0.,0.5)
+            axes[1].set_clip_on(True)
+
+
+
+            # axes[2].plot(znp,-np.exp(np.array(logp)[-1,:,0]))
+            sc2 = axes[2].scatter(znp,np.exp(np.array(logp)[-1,:,0]),s=0.5,marker=None,linestyle='-',c=probs[-1,:],cmap='viridis')
+            axes[2].scatter([ztr0],[0.],color="#F012BE",s=10.,zorder=5,clip_on=False)
+            axes[2].plot([ztr0, ztr0],[0.,pztr0], color="#F012BE",linestyle='--',alpha=0.8,linewidth=0.5)
+            axes[2].plot([ztr0, znp[0]],[pztr0,pztr0], color="#39CCCC",linestyle='--',alpha=0.8,linewidth=0.5,clip_on=False)
+            axes[2].set_xlim(-4,4)
+            axes[2].set_ylabel(r"$p(z_{t_0})$",labelpad=20)
+            axes[2].set_xlabel(r"$z$")
+            axes[2].set_yticks([])
+            axes[2].set_xticks([])
+            # axes[2].get_xaxis().set_visible(False)
+            axes[2].spines['top'].set_visible(False)
+            axes[2].spines['right'].set_visible(False)
+            axes[2].set_ylim(bottom=0.)
+
+            # fig.subplots_adjust(hspace=0.)
+            pos0 = axes[0].get_position(original=False)
+            pos1 = axes[1].get_position(original=False)
+            pos2 = axes[2].get_position(original=False)
+
+            # print(pos0.y0)
+            # print(pos1.y0+pos1.height)
+            axes[0].set_position([pos1.x0,pos0.y0+0.4,pos1.x1,pos0.height])
+            axes[2].set_position([pos1.x0,pos2.y0,pos1.x1,pos2.height])
+
+            if animate:
+                # utils.mkdirs(os.path.join(savedir, "anim",'{:0>4}'.format(str(smple))))
+                plt.savefig(os.path.join(savedir, "anim",'{:0>4}'.format(str(smple)),"img-"+'{:0>4}'.format(str(T))+".png"),pad_inches=0.05,bbox_inches='tight',dpi=300) 
+
+        plt.savefig(os.path.join(savedir, "fig1_1d_together"+'{:0>4}'.format(str(smple))+".png"),pad_inches=0.05,bbox_inches='tight',dpi=350) 
+
+#;
+# ffmpeg -r 24  -i experiments/fig1_1d_toy/fig1_ani/anim/0038/%04.png -c:v libx264 -crf 20   -pix_fmt yuv420p  experiments/fig1_1d_toy/fig1_ani/animate.mp4 
+# ffmpeg -r 24 -i %03.png -c:v libx264 -crf 20   -pix_fmt yuv420p animate.mp4 
+
+# ffmpeg -f concat -safe 0 -i anim-list -r 24 -c:v libx264 -crf 20   -pix_fmt yuv420p ffjord-sample-rev.mp4 
+
+def save_fig1_1d_icml_rev(model, data_samples, savedir, ntimes=101, memory=0.01, device='cpu',itr=''):
+    model.eval()
+    
+
+    # data_samples=torch.tensor(data_samples).float().cuda()
+
+    #  Sample from prior
+    z_samples = torch.randn(30, 1).to(device)
+
+    # linspace for plotting
+    npts=500
+
+    z_samples = np.linspace(-4,4,100)
+    z_samples = torch.from_numpy(z_samples[:,np.newaxis]).type(torch.float32).to(device)
+    znp = np.linspace(-4,4,npts)
+    z = torch.from_numpy(znp[:,np.newaxis]).type(torch.float32).to(device)
+                    
+    with torch.no_grad():
+    #     # We expect the model is a chain of CNF layers wrapped in a SequentialFlow container.
+        logp_samples = torch.sum(standard_normal_logprob(z_samples), -1, keepdim=True)
+        logp_z = torch.sum(standard_normal_logprob(z), -1, keepdim=True)
+        t = 0
+        for cnf in model.chain:
+            end_time = (cnf.sqrt_end_time * cnf.sqrt_end_time)
+            integration_times = torch.linspace(0, end_time, ntimes)
+
+            def log_prob(t):
+                z_traj,dlogp_traj = cnf(z,torch.zeros_like(logp_z),integration_times = torch.tensor([t,end_time]),reverse = False)
+                z_traj = z_traj
+                logp_z_traj = standard_normal_logprob(z_traj)
+                dlogp_traj = dlogp_traj.cpu().numpy()
+                return logp_z_traj.cpu().numpy() - dlogp_traj
+
+            
+            logp = []
+            for t in integration_times:
+                logp.append(log_prob(t))
+
+            # The differential equation evaluated at some t and x.
+            def _differential(t, x):
+                t = torch.tensor(t).to(device)
+                x = torch.tensor(x).to(device)
+                return cnf.odefunc.odefunc.diffeq(t, x)
+
+            ts = np.linspace(0,end_time,101)
+            xs = np.linspace(-4,4,100)
+            dxs = torch.zeros(ts.shape[0],xs.shape[0])
+            
+            for ti , t in enumerate(ts):
+                for xi,x in enumerate(xs):
+                    dxs[ti,xi]= -_differential(t,[x])
+
+            dxs = torch.tensor(dxs)
+            dts = torch.ones_like(dxs)
+
+
+            # z_traj, logp_traj= cnf(z, logp_z, integration_times=integration_times, reverse=False)
+            z_traj, logp_traj= cnf(z_samples, logp_samples, integration_times=integration_times, reverse=True)
+            z_traj = z_traj.numpy()[::-1,:,:]
+            logp_traj = logp_traj.numpy()[::-1,:,:]
+            # z_traj, logp_traj= cnf(z, logp_z, integration_times=integration_times, reverse=True)
+            # z_traj = z_traj.cpu().numpy()
+            # logp_traj= logp_traj.cpu().numpy()
+
+    makedirs(savedir)
+    plt.clf()
+    
+    plt.rcParams.update({'font.size': 13})
+    fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True,
+                                                            gridspec_kw={'height_ratios': [1,5, 1]},
+                                                            figsize=(4, 8))
+    fig.set_tight_layout({'pad': -1.0, 'h_pad': 0.0})
+
+
+    probs = np.exp(np.array(logp)[:,:,0])
+    maxs = np.amax(probs,axis=1,keepdims=True)
+    probs = probs[::-1]
+    # probs = probs / maxs
+
+    # for smple in range(len(z_samples)):
+    for smple in [38,50,55, 59]:
+        animate = True
+        if animate:
+            Trange = range(len(integration_times))
+        else:
+            Trange = [len(integration_times)-1]
+        for T in Trange: 
+            plt.clf()
+            plt.close()
+        
+            plt.rcParams.update({'font.size': 13})
+            fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True,
+                                                                    gridspec_kw={'height_ratios': [1,5, 1]},
+                                                                    figsize=(4, 7))
+            fig.set_tight_layout({'pad': -1.0, 'h_pad': 0.0})
+
+            print("plotting ",T)
+            ztr0 = z_traj[0,smple,0]
+            pztr0 = np.exp(np.array(logp_traj)[0,smple,0])
+            ztrT = z_traj[T,smple,0]
+            pztrT = np.exp(np.array(logp_traj)[T,smple,0])
+
+
+            probts = np.exp(np.array(logp))
+
+            sc0 = axes[0].scatter(znp,probts[T,:,0],s=0.5,marker=None,linestyle='-',c=probts[T,:,0],cmap='viridis',zorder=3)
+            sc0.set_clim(0.,maxs[-1][0])
+            axes[0].scatter(ztrT,[0.], color="#F012BE",s=10.,zorder=5,clip_on=False)
+            axes[0].plot([ztr0, ztr0],[0.,pztr0], color="#F012BE",linestyle='--',alpha=0.4,linewidth=0.5,zorder=2)
+            axes[0].plot([ztr0, znp[0]],[pztr0,pztr0], color="#39CCCC",linestyle='--',alpha=0.4,linewidth=0.5,clip_on=False,zorder=2)
+            axes[0].plot([ztrT, ztrT],[0.,pztrT], color="#F012BE",linestyle='--',alpha=0.8,linewidth=0.5,zorder=4)
+            axes[0].plot([ztrT, znp[0]],[pztrT,pztrT], color="#2ECC40",linestyle='--',alpha=0.8,linewidth=0.5,zorder=4)
+            axes[0].plot([znp[0], znp[0]],[pztr0,pztrT], color="#2ECC40",alpha=1.0,linewidth=1,zorder=10,clip_on=False)
+            axes[0].set_xlim(-4,4)
+            axes[0].set_ylim(0.,maxs[-1][0])
+            axes[0].set_ylabel(r"$p(z_{t})$",labelpad=20)
+            axes[0].set_yticks([min(0.9*pztr0,(pztrT+pztr0)/2)])
+            axes[0].set_yticklabels([r"$\Delta$"], color="#2ECC40")
+            axes[0].tick_params(width=0,labelsize=10)
+            axes[0].get_xaxis().set_visible(False)
+            axes[0].spines['top'].set_visible(False)
+            axes[0].spines['right'].set_visible(False)
+            # axes[0].set_clip_on(False)
+            axes[0].set_zorder(2)
+
+            axes[1].imshow(probs,cmap='viridis',extent=[-4,4,0,0.5],aspect=10)
+            axes[1].plot(z_traj[0:T,smple,0],ts[0:T], color="#F012BE")
+            axes[1].scatter([ztr0],[0.], color="#F012BE", s=10.,zorder=5)
+            axes[1].scatter([ztrT],[ts[T]], color="#F012BE",s=10.,zorder=5,clip_on=True)
+            axes[1].scatter([ztrT],[ts[-1]], color="#F012BE",s=10.,zorder=5,clip_on=True,visible=False)#hack
+            axes[1].streamplot(xs,ts,dxs.numpy()[:,::-1],dts,color='white',linewidth=0.3,density=(0.7,0.5),arrowsize=0.5)
+            axes[1].set_xlim(-4,4)
+            axes[1].set_yticks([0,0.5])
+            axes[1].set_yticklabels([r"$0$",r"$1$"])
+            axes[1].set_ylabel(r"$t$")
+            # axes[1].get_xaxis().set_visible(False)
+            axes[1].spines['bottom'].set_position('zero')
+            # axes[1].spines['bottom'].set_zorder(0.)
+            axes[1].spines['top'].set_position(('data',0.5))
+            # axes[1].spines['top'].set_zorder(0.)
+            axes[1].spines['left'].set_bounds(0.,0.5)
+            axes[1].spines['right'].set_bounds(0.,0.5)
+            axes[1].set_clip_on(True)
+
+
+
+            # axes[2].plot(znp,-np.exp(np.array(logp)[-1,:,0]))
+            sc2 =axes[2].scatter(znp,probs[-1,:],s=0.5,marker=None,linestyle='-',c=probs[-1,:],cmap='viridis')
+            sc2.set_clim(0.,maxs[-1][0])
+            axes[2].scatter([ztr0],[0.],color="#F012BE",s=10.,zorder=5,clip_on=False)
+            axes[2].plot([ztr0, ztr0],[0.,pztr0], color="#F012BE",linestyle='--',alpha=0.8,linewidth=0.5)
+            axes[2].plot([ztr0, znp[0]],[pztr0,pztr0], color="#39CCCC",linestyle='--',alpha=0.8,linewidth=0.5,clip_on=False)
+            axes[2].set_xlim(-4,4)
+            axes[2].set_ylabel(r"$p(z_{t_T})$",labelpad=20)
+            axes[2].set_xlabel(r"$z$")
+            axes[2].set_yticks([])
+            axes[2].set_xticks([])
+            # axes[2].get_xaxis().set_visible(False)
+            axes[2].spines['top'].set_visible(False)
+            axes[2].spines['right'].set_visible(False)
+            axes[2].set_ylim(0.,maxs[-1][0])
+
+            # fig.subplots_adjust(hspace=0.)
+            pos0 = axes[0].get_position(original=False)
+            pos1 = axes[1].get_position(original=False)
+            pos2 = axes[2].get_position(original=False)
+
+            # print(pos0.y0)
+            # print(pos1.y0+pos1.height)
+            axes[0].set_position([pos1.x0,pos0.y0+0.4,pos1.x1,pos0.height])
+            axes[2].set_position([pos1.x0,pos2.y0,pos1.x1,pos2.height])
+
+            if animate:
+                # utils.mkdirs(os.path.join(savedir, "anim",'{:0>4}'.format(str(smple))))
+                plt.savefig(os.path.join(savedir, "anim_rev",'{:0>4}'.format(str(smple)),"img-"+'{:0>4}'.format(str(T))+".png"),pad_inches=0.05,bbox_inches='tight',dpi=300) 
+
+        plt.savefig(os.path.join(savedir, "fig1_1d_together_rev"+'{:0>4}'.format(str(smple))+".png"),pad_inches=0.05,bbox_inches='tight',dpi=350) 
+def save_fig1_1d_ptd_timescrub(model, data_samples, savedir, ntimes=101, memory=0.01, device='cpu',itr=''):
+    model.eval()
+    
+
+    # data_samples=torch.tensor(data_samples).float().cuda()
+
+    #  Sample from prior
+    z_samples = torch.randn(30, 1).to(device)
+
+    # linspace for plotting
+    npts=500
+
+    z_samples = np.linspace(-4,4,100)
+    z_samples = torch.from_numpy(z_samples[:,np.newaxis]).type(torch.float32).to(device)
+    znp = np.linspace(-4,4,npts)
+    z = torch.from_numpy(znp[:,np.newaxis]).type(torch.float32).to(device)
+                    
+    with torch.no_grad():
+    #     # We expect the model is a chain of CNF layers wrapped in a SequentialFlow container.
+        logp_samples = torch.sum(standard_normal_logprob(z_samples), -1, keepdim=True)
+        logp_z = torch.sum(standard_normal_logprob(z), -1, keepdim=True)
+        t = 0
+        for cnf in model.chain:
+            end_time = (cnf.sqrt_end_time * cnf.sqrt_end_time)
+            integration_times = torch.linspace(0, end_time, ntimes)
+
+            def log_prob(t):
+                z_traj,dlogp_traj = cnf(z,torch.zeros_like(logp_z),integration_times = torch.tensor([t,end_time]),reverse = False)
+                z_traj = z_traj
+                logp_z_traj = standard_normal_logprob(z_traj)
+                dlogp_traj = dlogp_traj.cpu().numpy()
+                return logp_z_traj.cpu().numpy() - dlogp_traj
+
+            
+            logp = []
+            for t in integration_times:
+                logp.append(log_prob(t))
+
+            # The differential equation evaluated at some t and x.
+            def _differential(t, x):
+                t = torch.tensor(t).to(device)
+                x = torch.tensor(x).to(device)
+                return cnf.odefunc.odefunc.diffeq(t, x)
+
+            ts = np.linspace(0,end_time,100)
+            xs = np.linspace(-4,4,100)
+            dxs = torch.zeros(ts.shape[0],xs.shape[0])
+            
+            for ti , t in enumerate(ts):
+                for xi,x in enumerate(xs):
+                    dxs[ti,xi]= -_differential(t,[x])
+
+            dxs = torch.tensor(dxs)
+            dts = torch.ones_like(dxs)
+
+
+            # z_traj, logp_traj= cnf(z, logp_z, integration_times=integration_times, reverse=False)
+            z_traj, logp_traj= cnf(z_samples, logp_samples, integration_times=integration_times, reverse=True)
+            # z_traj, logp_traj= cnf(z, logp_z, integration_times=integration_times, reverse=True)
+            # z_traj = z_traj.cpu().numpy()
+            # logp_traj= logp_traj.cpu().numpy()
+
+    makedirs(savedir)
+    for timerow in range(integration_times.shape[0]):
+        plt.clf()
+
+        probs = np.exp(np.array(logp)[:,:,0])
+        maxs = np.amax(probs,axis=1,keepdims=True)
+        probs = probs / maxs
+
+
+        plt.rcParams.update({'font.size': 13})
+        fig, axes = plt.subplots(nrows=2, ncols=1, sharex=True,
+                                                                gridspec_kw={'height_ratios': [1,5]},
+                                                                figsize=(8,13))
+        fig.set_tight_layout({'pad': 0.1, 'h_pad': -1.0})
+
+        axes[0].scatter(znp,np.exp(np.array(logp)[::-1][timerow,:,0]),s=0.5,marker=None,linestyle='-',c=np.exp(np.array(logp)[::-1][timerow,:,0]),cmap='viridis')
+        axes[0].set_xlim(-4,4)
+        axes[0].set_ylim(0,.42)
+        axes[0].set_ylabel(r"$p(z(t))$",labelpad=20)
+
+        axes[0].set_yticks([])
+        axes[0].get_xaxis().set_visible(False)
+        axes[0].spines['top'].set_visible(False)
+        axes[0].spines['right'].set_visible(False)
+        axes[0].set_ylim(bottom=0.0)
+
+        axes[1].imshow(probs,cmap='viridis',extent=[-4,4,0,0.5],aspect=10)
+        axes[1].streamplot(xs,ts,dxs,dts,color='white',linewidth=0.9,density=(0.7,0.5),arrowsize=0.8)
+        axes[1].plot([-4,4],[integration_times[timerow],integration_times[timerow]],c='red',zorder=100)
+        axes[1].set_xlim(-4,4)
+        axes[1].set_yticks([0,0.5])
+        axes[1].set_xticks([])
+        axes[1].set_yticklabels([r"$0$",r"$1$"])
+        axes[1].set_ylabel(r"$t$")
+        axes[1].set_xlabel(r"$z$")
+        axes[1].spines['top'].set_visible(False)
+        axes[1].spines['bottom'].set_visible(False)
+        axes[1].get_xaxis().set_visible(True)
+
+
+        pos0 = axes[0].get_position(original=False)
+        pos1 = axes[1].get_position(original=False)
+
+        print(pos0.y0)
+        print(pos1.y0+pos1.height)
+        axes[0].set_position([pos1.x0,pos0.y0+0.15,pos1.x1,pos0.height])
+
+        plt.savefig(os.path.join(savedir, "fig1_1d_scrub"+str(timerow)+".png"),pad_inches=0,bbox_inches='tight') 
+        plt.close()
