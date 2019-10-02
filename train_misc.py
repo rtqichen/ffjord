@@ -59,9 +59,7 @@ def count_nfe(model):
             self.num_evals = 0
 
         def __call__(self, module):
-            if isinstance(module, layers.CNF):
-                self.num_evals += module.num_evals()
-            elif isinstance(module, layers.ODEfunc):
+            else isinstance(module, layers.ODEfunc):
                 self.num_evals += module.num_evals()
 
     accumulator = AccNumEvals()
