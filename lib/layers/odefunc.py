@@ -274,6 +274,9 @@ class ODEfunc(nn.Module):
         self._e = e
         self._num_evals.fill_(0)
 
+    def num_evals(self):
+        return self._num_evals.item()
+
     def forward(self, t, states):
         assert len(states) >= 2
         y = states[0]
