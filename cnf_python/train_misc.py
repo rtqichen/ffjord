@@ -31,6 +31,13 @@ def set_cnf_options(args, model):
             module.test_solver = args.test_solver if args.test_solver else args.solver
             module.test_atol = args.test_atol if args.test_atol else args.atol
             module.test_rtol = args.test_rtol if args.test_rtol else args.rtol
+            # if hasattr(args, 'test_step_size'):
+            #     if args.test_step_size is not None:
+            #         module.test_solver_options['step_size'] = args.test_step_size
+            if hasattr(args, 'test_step_size') and args.test_step_size is not None:
+                module.test_solver_options['step_size'] = args.test_step_size
+            else:
+                module.test_solver_options['step_size'] = args.step_size # if no separate test_step_size, use the same
 
         if isinstance(module, layers.ODEfunc):
             module.rademacher = args.rademacher
@@ -59,7 +66,7 @@ def count_nfe(model):
             self.num_evals = 0
 
         def __call__(self, module):
-            if isinstance(module, layers.ODEfunc):
+            if isinstance(module, layers.CNF):
                 self.num_evals += module.num_evals()
 
     accumulator = AccNumEvals()
@@ -157,7 +164,7 @@ def get_regularization(model, regularization_coeffs):
     return acc_reg_states
 
 
-def build_model_tabular(args, dims, regularization_fns=None):
+def build_model_tabular(args, dims, regularization_fns=None): # IMPORTANT
 
     hidden_dims = tuple(map(int, args.dims.split("-")))
 

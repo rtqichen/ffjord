@@ -1,5 +1,11 @@
-import matplotlib
-matplotlib.use('Agg')
+try:
+    import matplotlib
+    matplotlib.use('TkAgg')
+    import matplotlib.pyplot as plt
+except:
+    import matplotlib
+    matplotlib.use('agg') # for linux server with no tkinter
+    import matplotlib.pyplot as plt
 import matplotlib.pyplot as plt
 
 import argparse
@@ -26,7 +32,7 @@ SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
 parser.add_argument(
     '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons', '2spirals', 'checkerboard', 'rings'],
-    type=str, default='pinwheel'
+    type=str, default='8gaussians'
 )
 parser.add_argument(
     "--layer_type", type=str, default="concatsquash",
@@ -39,7 +45,7 @@ parser.add_argument('--train_T', type=eval, default=True)
 parser.add_argument("--divergence_fn", type=str, default="brute_force", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="tanh", choices=odefunc.NONLINEARITIES)
 
-parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
+parser.add_argument('--solver', type=str, default='rk4', choices=SOLVERS) # default='dopri5'
 parser.add_argument('--atol', type=float, default=1e-5)
 parser.add_argument('--rtol', type=float, default=1e-5)
 parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
@@ -68,7 +74,7 @@ parser.add_argument('--JFrobint', type=float, default=None, help="int_t ||df/dx|
 parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df_i/dx_i||_F")
 parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
 
-parser.add_argument('--save', type=str, default='experiments/cnf')
+parser.add_argument('--save', type=str, default='experiments/cnf/toy')
 parser.add_argument('--viz_freq', type=int, default=100)
 parser.add_argument('--val_freq', type=int, default=100)
 parser.add_argument('--log_freq', type=int, default=10)
@@ -144,8 +150,28 @@ if __name__ == '__main__':
 
     end = time.time()
     best_loss = float('inf')
+    # plot setup before training
+    # with torch.no_grad():
+    #     model.eval()
+    #     p_samples = toy_data.inf_train_gen(args.data, batch_size=2000)
+    #
+    #     sample_fn, density_fn = get_transforms(model)
+    #
+    #     plt.figure(figsize=(9, 3))
+    #     visualize_transform(
+    #         p_samples, torch.randn, standard_normal_logprob, transform=sample_fn, inverse_transform=density_fn,
+    #         samples=True, npts=800, device=device
+    #     )
+    #     fig_filename = os.path.join(args.save, 'figs', 'start.jpg')
+    #     utils.makedirs(os.path.dirname(fig_filename))
+    #     plt.savefig(fig_filename)
+    #     plt.close()
+    #     model.train()
+
     model.train()
     for itr in range(1, args.niters + 1):
+        # plot the first thing
+
         optimizer.zero_grad()
         if args.spectral_norm: spectral_norm_power_iteration(model, 1)
 
@@ -176,8 +202,8 @@ if __name__ == '__main__':
         log_message = (
             'Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | NFE Forward {:.0f}({:.1f})'
             ' | NFE Backward {:.0f}({:.1f}) | CNF Time {:.4f}({:.4f})'.format(
-                itr, time_meter.val, time_meter.avg, loss_meter.val, loss_meter.avg, nfef_meter.val, nfef_meter.avg,
-                nfeb_meter.val, nfeb_meter.avg, tt_meter.val, tt_meter.avg
+                itr, time_meter.val, time_meter.sum, loss_meter.val, loss_meter.avg, nfef_meter.val, nfef_meter.sum,
+                nfeb_meter.val, nfeb_meter.sum, tt_meter.val, tt_meter.avg
             )
         )
         if len(regularization_coeffs) > 0:

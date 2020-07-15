@@ -9,7 +9,7 @@ from .squeeze import squeeze, unsqueeze
 
 __all__ = ["ODEnet", "AutoencoderDiffEqNet", "ODEfunc", "AutoencoderODEfunc"]
 
-
+# Trace Estimater
 def divergence_bf(dx, y, **unused_kwargs):
     sum_diag = 0.
     for i in range(y.shape[1]):
@@ -17,10 +17,11 @@ def divergence_bf(dx, y, **unused_kwargs):
     return sum_diag.contiguous()
 
 
-# def divergence_bf(f, y, **unused_kwargs):
-#     jac = _get_minibatch_jacobian(f, y)
-#     diagonal = jac.view(jac.shape[0], -1)[:, ::jac.shape[1]]
-#     return torch.sum(diagonal, 1)
+# brute-force TODO: look at full Jacobian
+def divergence_actual(f, y, **unused_kwargs):
+    jac = _get_minibatch_jacobian(f, y)
+    diagonal = jac.view(jac.shape[0], -1)[:, ::jac.shape[1]]
+    return torch.sum(diagonal, 1)
 
 
 def _get_minibatch_jacobian(y, x):
@@ -274,9 +275,6 @@ class ODEfunc(nn.Module):
         self._e = e
         self._num_evals.fill_(0)
 
-    def num_evals(self):
-        return self._num_evals.item()
-
     def forward(self, t, states):
         assert len(states) >= 2
         y = states[0]
@@ -301,11 +299,17 @@ class ODEfunc(nn.Module):
             for s_ in states[2:]:
                 s_.requires_grad_(True)
             dy = self.diffeq(t, y, *states[2:])
+
             # Hack for 2D data to use brute force divergence computation.
             if not self.training and dy.view(dy.shape[0], -1).shape[1] == 2:
                 divergence = divergence_bf(dy, y).view(batchsize, 1)
             else:
                 divergence = self.divergence_fn(dy, y, e=self._e).view(batchsize, 1)
+
+                # # test how far off the jacobian is
+                # divergence2 = divergence_actual(dy, y)
+                # print(divergence - divergence2)
+
         if self.residual:
             dy = dy - y
             divergence -= torch.ones_like(divergence) * torch.tensor(np.prod(y.shape[1:]), dtype=torch.float32

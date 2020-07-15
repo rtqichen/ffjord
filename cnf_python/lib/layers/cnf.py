@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
 
-from torchdiffeq import odeint_adjoint as odeint
+# from torchdiffeq import odeint_adjoint as odeint
+from torchdiffeq import odeint_adjoint
+from torchdiffeq import odeint  # make RK be Disc-Opt approach using auto-diff
 
 from .wrappers.cnf_regularization import RegularizedODEfunc
 
@@ -10,6 +12,7 @@ __all__ = ["CNF"]
 
 class CNF(nn.Module):
     def __init__(self, odefunc, T=1.0, train_T=False, regularization_fns=None, solver='dopri5', atol=1e-5, rtol=1e-5):
+
         super(CNF, self).__init__()
         if train_T:
             self.register_parameter("sqrt_end_time", nn.Parameter(torch.sqrt(torch.tensor(T))))
@@ -30,6 +33,7 @@ class CNF(nn.Module):
         self.test_atol = atol
         self.test_rtol = rtol
         self.solver_options = {}
+        self.test_solver_options = {}
 
     def forward(self, z, logpz=None, integration_times=None, reverse=False):
 
@@ -50,24 +54,47 @@ class CNF(nn.Module):
         reg_states = tuple(torch.tensor(0).to(z) for _ in range(self.nreg))
 
         if self.training:
-            state_t = odeint(
-                self.odefunc,
-                (z, _logpz) + reg_states,
-                integration_times.to(z),
-                atol=[self.atol, self.atol] + [1e20] * len(reg_states) if self.solver == 'dopri5' else self.atol,
-                rtol=[self.rtol, self.rtol] + [1e20] * len(reg_states) if self.solver == 'dopri5' else self.rtol,
-                method=self.solver,
-                options=self.solver_options,
-            )
+            if self.solver=='rk4': # force rk4 to be D-O and use auto-diff
+                state_t = odeint(
+                    self.odefunc,
+                    (z, _logpz) + reg_states,
+                    integration_times.to(z),
+                    atol=[self.atol, self.atol] + [1e20] * len(reg_states) if self.solver == 'dopri5' else self.atol,
+                    rtol=[self.rtol, self.rtol] + [1e20] * len(reg_states) if self.solver == 'dopri5' else self.rtol,
+                    method=self.solver,
+                    options=self.solver_options,
+                )
+            else:
+                state_t = odeint_adjoint(
+                    self.odefunc,
+                    (z, _logpz) + reg_states,
+                    integration_times.to(z),
+                    atol=[self.atol, self.atol] + [1e20] * len(reg_states) if self.solver == 'dopri5' else self.atol,
+                    rtol=[self.rtol, self.rtol] + [1e20] * len(reg_states) if self.solver == 'dopri5' else self.rtol,
+                    method=self.solver,
+                    options=self.solver_options,
+                )
         else:
-            state_t = odeint(
-                self.odefunc,
-                (z, _logpz),
-                integration_times.to(z),
-                atol=self.test_atol,
-                rtol=self.test_rtol,
-                method=self.test_solver,
-            )
+            if self.solver == 'rk4':  # force rk4 to be D-O and use auto-diff
+                state_t = odeint(
+                    self.odefunc,
+                    (z, _logpz),
+                    integration_times.to(z),
+                    atol=self.test_atol,
+                    rtol=self.test_rtol,
+                    method=self.test_solver,
+                    options=self.test_solver_options, # include to optionally pass a test_step_size
+                )
+            else:
+                state_t = odeint_adjoint(
+                    self.odefunc,
+                    (z, _logpz),
+                    integration_times.to(z),
+                    atol=self.test_atol,
+                    rtol=self.test_rtol,
+                    method=self.test_solver,
+                    options=self.test_solver_options, # include to optionally pass a test_step_size
+                )
 
         if len(integration_times) == 2:
             state_t = tuple(s[1] for s in state_t)

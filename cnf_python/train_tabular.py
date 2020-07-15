@@ -9,11 +9,14 @@ import lib.layers.odefunc as odefunc
 from lib.custom_optimizers import Adam
 
 import datasets
+import numpy as np
 
 from train_misc import standard_normal_logprob
 from train_misc import set_cnf_options, count_nfe, count_parameters, count_total_time
 from train_misc import create_regularization_fns, get_regularization, append_regularization_to_log
 from train_misc import build_model_tabular, override_divergence_fn
+
+# download data from https://zenodo.org/record/1161203#.XbiVGUVKhgi
 
 SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
@@ -24,15 +27,15 @@ parser.add_argument(
     "--layer_type", type=str, default="concatsquash",
     choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
 )
-parser.add_argument('--hdim_factor', type=int, default=10)
-parser.add_argument('--nhidden', type=int, default=1)
-parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
+parser.add_argument('--hdim_factor', type=int, default=10) # default=10
+parser.add_argument('--nhidden', type=int, default=1)   
+parser.add_argument("--num_blocks", type=int, default=3, help='Number of stacked CNFs.')
 parser.add_argument('--time_length', type=float, default=1.0)
 parser.add_argument('--train_T', type=eval, default=True)
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=odefunc.NONLINEARITIES)
 
-parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
+parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS) # default='dopri5'
 parser.add_argument('--atol', type=float, default=1e-8)
 parser.add_argument('--rtol', type=float, default=1e-6)
 parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
@@ -40,13 +43,16 @@ parser.add_argument("--step_size", type=float, default=None, help="Optional fixe
 parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
 parser.add_argument('--test_atol', type=float, default=None)
 parser.add_argument('--test_rtol', type=float, default=None)
+parser.add_argument("--test_step_size", type=float, default=None, help="Optional fixed step size.")
+parser.add_argument("--max_epoch", type=int, default=2000, help="Optional maximum number of epochs")
+
 
 parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
 parser.add_argument('--rademacher', type=eval, default=False, choices=[True, False])
 parser.add_argument('--batch_norm', type=eval, default=False, choices=[True, False])
 parser.add_argument('--bn_lag', type=float, default=0)
 
-parser.add_argument('--early_stopping', type=int, default=30)
+parser.add_argument('--early_stopping', type=int, default=20)
 parser.add_argument('--batch_size', type=int, default=1000)
 parser.add_argument('--test_batch_size', type=int, default=None)
 parser.add_argument('--lr', type=float, default=1e-3)
@@ -61,10 +67,11 @@ parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df
 parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
 
 parser.add_argument('--resume', type=str, default=None)
-parser.add_argument('--save', type=str, default='experiments/cnf')
+parser.add_argument('--save', type=str, default='experiments/cnf/temp')
 parser.add_argument('--evaluate', action='store_true')
 parser.add_argument('--val_freq', type=int, default=200)
 parser.add_argument('--log_freq', type=int, default=10)
+parser.add_argument('--gpu', type=int, default=0) 
 args = parser.parse_args()
 
 # logger
@@ -100,17 +107,20 @@ ndecs = 0
 
 def update_lr(optimizer, n_vals_without_improvement):
     global ndecs
-    if ndecs == 0 and n_vals_without_improvement > args.early_stopping // 3:
+    if ndecs == 0 and n_vals_without_improvement > 10: # args.early_stopping // 3:
         for param_group in optimizer.param_groups:
             param_group["lr"] = args.lr / 10
+        print("lr: ", args.lr/10)
         ndecs = 1
-    elif ndecs == 1 and n_vals_without_improvement > args.early_stopping // 3 * 2:
+    elif ndecs == 1 and n_vals_without_improvement > 20: # args.early_stopping // 3 * 2:
         for param_group in optimizer.param_groups:
             param_group["lr"] = args.lr / 100
+        print("lr: ", args.lr/100)
         ndecs = 2
     else:
         for param_group in optimizer.param_groups:
             param_group["lr"] = args.lr / 10**ndecs
+        print("lr: ", args.lr/10**ndecs)
 
 
 def load_data(name):
@@ -153,13 +163,15 @@ def restore_model(model, filename):
 
 if __name__ == '__main__':
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:" + str(args.gpu) if torch.cuda.is_available() else "cpu")
     cvt = lambda x: x.type(torch.float32).to(device, non_blocking=True)
 
-    logger.info('Using {} GPUs.'.format(torch.cuda.device_count()))
+    # logger.info('Using {} GPUs.'.format(torch.cuda.device_count()))
 
     data = load_data(args.data)
     data.trn.x = torch.from_numpy(data.trn.x)
+    print(data.trn.x.shape)
     data.val.x = torch.from_numpy(data.val.x)
     data.tst.x = torch.from_numpy(data.tst.x)
 
@@ -186,6 +198,8 @@ if __name__ == '__main__':
     logger.info(model)
     logger.info("Number of trainable parameters: {}".format(count_parameters(model)))
 
+
+
     if not args.evaluate:
         optimizer = Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
@@ -194,6 +208,9 @@ if __name__ == '__main__':
         nfef_meter = utils.RunningAverageMeter(0.98)
         nfeb_meter = utils.RunningAverageMeter(0.98)
         tt_meter = utils.RunningAverageMeter(0.98)
+
+        res = np.zeros([4, args.max_epoch]) # number of max epochs here
+        resIdx = 0
 
         best_loss = float('inf')
         itr = 0
@@ -208,6 +225,8 @@ if __name__ == '__main__':
                 if args.early_stopping > 0 and n_vals_without_improvement > args.early_stopping:
                     break
 
+                
+                end = time.time()
                 optimizer.zero_grad()
 
                 x = cvt(x)
@@ -236,21 +255,39 @@ if __name__ == '__main__':
                 tt_meter.update(total_time)
 
                 if itr % args.log_freq == 0:
+                    epoch_approx = float(itr) / (data.trn.x.shape[0] / float(args.batch_size))
                     log_message = (
                         'Iter {:06d} | Epoch {:.2f} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | '
                         'NFE Forward {:.0f}({:.1f}) | NFE Backward {:.0f}({:.1f}) | CNF Time {:.4f}({:.4f})'.format(
                             itr,
-                            float(itr) / (data.trn.x.shape[0] / float(args.batch_size)), time_meter.val, time_meter.avg,
-                            loss_meter.val, loss_meter.avg, nfef_meter.val, nfef_meter.avg, nfeb_meter.val,
-                            nfeb_meter.avg, tt_meter.val, tt_meter.avg
+                            epoch_approx, time_meter.val, time_meter.sum,
+                            loss_meter.val, loss_meter.avg, nfef_meter.val, nfef_meter.sum, nfeb_meter.val,
+                            nfeb_meter.sum, tt_meter.val, tt_meter.avg
                         )
                     )
+
+                    res[0, resIdx] = itr
+                    res[1, resIdx] = epoch_approx
+                    res[2, resIdx] = time_meter.sum
+                    res[3, resIdx] = loss_meter.val
+                    resIdx += 1
+                    
+                    np.save(args.save + '/' + args.data + '_results.npy', res) # print in case something happens
+
+                    if resIdx >= res.shape[1]:
+                        # save results for plotting
+                        print(args.save, '    ', args.data)
+                        np.save(args.save + '/' + args.data + '_results.npy', res)
+                        # exit(0) # force a max number of epochs
+                        print("DO: max number of epochs hit")
+                        n_vals_without_improvement = args.early_stopping+1
+
                     if len(regularization_coeffs) > 0:
                         log_message = append_regularization_to_log(log_message, regularization_fns, reg_states)
 
                     logger.info(log_message)
                 itr += 1
-                end = time.time()
+                # end = time.time()
 
                 # Validation loop.
                 if itr % args.val_freq == 0:
@@ -292,7 +329,7 @@ if __name__ == '__main__':
     logger.info('Evaluating model on test set.')
     model.eval()
 
-    override_divergence_fn(model, "brute_force")
+    override_divergence_fn(model, "brute_force") # brute forces the testing data trace estimation
 
     with torch.no_grad():
         test_loss = utils.AverageMeter()
@@ -304,3 +341,15 @@ if __name__ == '__main__':
             logger.info('Progress: {:.2f}%'.format(100. * itr / (data.tst.x.shape[0] / test_batch_size)))
         log_message = '[TEST] Iter {:06d} | Test Loss {:.6f} | NFE {:.0f}'.format(itr, test_loss.avg, test_nfe.avg)
         logger.info(log_message)
+
+
+    # if not enough iters hit, print now
+    print(args.save, '    ', args.data)
+    np.save(args.save + '/' + args.data + '_' + args.solver + '_results.npy', res)
+
+    torch.save({
+        'args': args,
+        'state_dict': model.state_dict(),
+    }, os.path.join(args.save, 'checkptEnd.pth'))
+
+

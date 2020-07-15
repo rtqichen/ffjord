@@ -29,7 +29,7 @@ SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
 parser.add_argument(
     '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons', '2spirals', 'checkerboard', 'rings'],
-    type=str, default='pinwheel'
+    type=str, default='8gaussians'
 )
 
 parser.add_argument('--discrete', action='store_true')

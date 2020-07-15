@@ -23,7 +23,7 @@ def load_static_mnist(args, **kwargs):
     def lines_to_np_array(lines):
         return np.array([[int(i) for i in line.split()] for line in lines])
 
-    with open(os.path.join('data', 'MNIST_static', 'binarized_mnist_train.amat')) as f:
+    with open(os.path.join('data', 'MNIST_static', 'binarized_mnist_train.amat'),'rb') as f:
         lines = f.readlines()
     x_train = lines_to_np_array(lines).astype('float32')
     with open(os.path.join('data', 'MNIST_static', 'binarized_mnist_valid.amat')) as f:

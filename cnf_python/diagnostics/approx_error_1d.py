@@ -133,7 +133,7 @@ def compute_loss(args, model, batch_size=None):
     if batch_size is None: batch_size = args.batch_size
 
     x = data_sample(batch_size)
-    logpx = model_density(x, model)
+    logpx = model_density(x)
     return -torch.mean(logpx)
 
 

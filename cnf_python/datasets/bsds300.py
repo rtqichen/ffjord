@@ -1,7 +1,7 @@
 import numpy as np
 import h5py
 
-import datasets
+from cnf_python import datasets
 
 
 class BSDS300:

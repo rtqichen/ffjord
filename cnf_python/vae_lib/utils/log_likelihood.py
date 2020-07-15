@@ -1,7 +1,7 @@
 from __future__ import print_function
 import time
 import numpy as np
-from scipy.misc import logsumexp
+from scipy.special import logsumexp
 from vae_lib.optimization.loss import calculate_loss_array
 
 

@@ -66,12 +66,14 @@ class RunningAverageMeter(object):
     def reset(self):
         self.val = None
         self.avg = 0
+        self.sum = 0  #
 
     def update(self, val):
         if self.val is None:
             self.avg = val
         else:
             self.avg = self.avg * self.momentum + val * (1 - self.momentum)
+        self.sum += val
         self.val = val
 
 

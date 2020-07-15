@@ -27,11 +27,12 @@ class CouplingLayer(nn.Module):
         in_dim = self.d
         out_dim = x.shape[1] - self.d
 
-        s_t = self.net_s_t(x[:, :in_dim])
-        scale = torch.sigmoid(s_t[:, :out_dim] + 2.)
-        shift = s_t[:, out_dim:]
+        s_t = self.net_s_t(x[:, :in_dim])                # forward propogate
+        scale = torch.sigmoid(s_t[:, :out_dim] + 2.)     # apply the sigmoid to the first few dimensions
+        shift = s_t[:, out_dim:]                         # store the last few dimensions as shift
 
-        logdetjac = torch.sum(torch.log(scale).view(scale.shape[0], -1), 1, keepdim=True)
+                                                         # Tr(log(J)) ?????
+        logdetjac = torch.sum(torch.log(scale).view(scale.shape[0], -1), 1, keepdim=True) # JACOBIAN ?
 
         if not reverse:
             y1 = x[:, self.d:] * scale + shift

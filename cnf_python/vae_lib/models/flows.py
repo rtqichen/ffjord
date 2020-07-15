@@ -59,7 +59,7 @@ class Planar(nn.Module):
 
         # compute logdetJ
         psi = w * self.der_h(wzb)
-        log_det_jacobian = torch.log(torch.abs(1 + torch.bmm(psi, u_hat)))
+        log_det_jacobian = torch.log(torch.abs(1 + torch.bmm(psi, u_hat))) # JACOBIAN ? , bmm=batch matrix-matrix product
         log_det_jacobian = log_det_jacobian.squeeze(2).squeeze(1)
 
         return z, log_det_jacobian
@@ -124,7 +124,7 @@ class Sylvester(nn.Module):
         z = z.squeeze(1)
 
         # Compute log|det J|
-        # Output log_det_j in shape (batch_size) instead of (batch_size,1)
+        # Output log_det_j in shape (batch_size) instead of (batch_size,1)    # JACOBIAN
         diag_j = diag_r1 * diag_r2
         diag_j = self.der_h(r2qzb).squeeze(1) * diag_j
         diag_j += 1.
