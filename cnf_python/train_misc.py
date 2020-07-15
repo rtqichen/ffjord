@@ -2,7 +2,6 @@ import six
 import math
 
 import lib.layers.wrappers.cnf_regularization as reg_lib
-import lib.spectral_norm as spectral_norm
 import lib.layers as layers
 from lib.layers.odefunc import divergence_bf, divergence_approx
 
@@ -94,31 +93,6 @@ def count_total_time(model):
     return accumulator.total_time
 
 
-def add_spectral_norm(model, logger=None):
-    """Applies spectral norm to all modules within the scope of a CNF."""
-
-    def apply_spectral_norm(module):
-        if 'weight' in module._parameters:
-            if logger: logger.info("Adding spectral norm to {}".format(module))
-            spectral_norm.inplace_spectral_norm(module, 'weight')
-
-    def find_cnf(module):
-        if isinstance(module, layers.CNF):
-            module.apply(apply_spectral_norm)
-        else:
-            for child in module.children():
-                find_cnf(child)
-
-    find_cnf(model)
-
-
-def spectral_norm_power_iteration(model, n_power_iterations=1):
-
-    def recursive_power_iteration(module):
-        if hasattr(module, spectral_norm.POWER_ITERATION_FN):
-            getattr(module, spectral_norm.POWER_ITERATION_FN)(n_power_iterations)
-
-    model.apply(recursive_power_iteration)
 
 
 REGULARIZATION_FNS = {
