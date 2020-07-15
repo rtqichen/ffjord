@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
 
-# from torchdiffeq import odeint_adjoint as odeint
 from torchdiffeq import odeint_adjoint
-from torchdiffeq import odeint  # make RK be Disc-Opt approach using auto-diff
+from torchdiffeq import odeint  # Disc-Opt approach using auto-diff
 
 from .wrappers.cnf_regularization import RegularizedODEfunc
 
@@ -54,17 +53,17 @@ class CNF(nn.Module):
         reg_states = tuple(torch.tensor(0).to(z) for _ in range(self.nreg))
 
         if self.training:
-            if self.solver=='rk4': # force rk4 to be D-O and use auto-diff
+            if self.solver=='do': # use the Disc-Opt approach with auto-diff
                 state_t = odeint(
                     self.odefunc,
                     (z, _logpz) + reg_states,
                     integration_times.to(z),
                     atol=[self.atol, self.atol] + [1e20] * len(reg_states) if self.solver == 'dopri5' else self.atol,
                     rtol=[self.rtol, self.rtol] + [1e20] * len(reg_states) if self.solver == 'dopri5' else self.rtol,
-                    method=self.solver,
+                    method = 'rk4', # force rk4 as the Disc-Opt approach      
                     options=self.solver_options,
                 )
-            else:
+            else: # Opt-Disc approach
                 state_t = odeint_adjoint(
                     self.odefunc,
                     (z, _logpz) + reg_states,
@@ -75,17 +74,17 @@ class CNF(nn.Module):
                     options=self.solver_options,
                 )
         else:
-            if self.solver == 'rk4':  # force rk4 to be D-O and use auto-diff
+            if self.solver == 'do':  # use the Disc-Opt approach with auto-diff
                 state_t = odeint(
                     self.odefunc,
                     (z, _logpz),
                     integration_times.to(z),
                     atol=self.test_atol,
                     rtol=self.test_rtol,
-                    method=self.test_solver,
+                    method = 'rk4', # force rk4 as the Disc-Opt approach      
                     options=self.test_solver_options, # include to optionally pass a test_step_size
                 )
-            else:
+            else: # Opt-Disc approach
                 state_t = odeint_adjoint(
                     self.odefunc,
                     (z, _logpz),
@@ -120,3 +119,4 @@ def _flip(x, dim):
     indices = [slice(None)] * x.dim()
     indices[dim] = torch.arange(x.size(dim) - 1, -1, -1, dtype=torch.long, device=x.device)
     return x[tuple(indices)]
+

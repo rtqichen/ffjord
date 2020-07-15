@@ -24,7 +24,7 @@ import h5py
 
 # download data from https://zenodo.org/record/1161203#.XbiVGUVKhgi
 
-SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams']
+SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams', 'do']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
 parser.add_argument(
     '--data', choices=['power', 'gas', 'hepmass', 'miniboone', 'bsds300'], type=str, default='miniboone'

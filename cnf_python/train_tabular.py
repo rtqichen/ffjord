@@ -18,7 +18,7 @@ from train_misc import build_model_tabular, override_divergence_fn
 
 # download data from https://zenodo.org/record/1161203#.XbiVGUVKhgi
 
-SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams']
+SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams', 'do']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
 parser.add_argument(
     '--data', choices=['power', 'gas', 'hepmass', 'miniboone', 'bsds300'], type=str, default='miniboone'
@@ -257,8 +257,8 @@ if __name__ == '__main__':
                 if itr % args.log_freq == 0:
                     epoch_approx = float(itr) / (data.trn.x.shape[0] / float(args.batch_size))
                     log_message = (
-                        'Iter {:06d} | Epoch {:.2f} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | '
-                        'NFE Forward {:.0f}({:.1f}) | NFE Backward {:.0f}({:.1f}) | CNF Time {:.4f}({:.4f})'.format(
+                        'Iter {:06d} | Epoch {:.2f} | Time {:.2f}({:.2f}) | Loss {:.6f}({:.6f}) | '
+                        'NFE Forward {:.0f}({:.1f}) | NFE Backward {:.0f}({:.1f}) | CNF Time {:.2f}({:.2f})'.format(
                             itr,
                             epoch_approx, time_meter.val, time_meter.sum,
                             loss_meter.val, loss_meter.avg, nfef_meter.val, nfef_meter.sum, nfeb_meter.val,
@@ -329,7 +329,7 @@ if __name__ == '__main__':
     logger.info('Evaluating model on test set.')
     model.eval()
 
-    override_divergence_fn(model, "brute_force") # brute forces the testing data trace estimation
+    override_divergence_fn(model, "brute_force") # brute forces the testing data trace computation
 
     with torch.no_grad():
         test_loss = utils.AverageMeter()
@@ -342,14 +342,5 @@ if __name__ == '__main__':
         log_message = '[TEST] Iter {:06d} | Test Loss {:.6f} | NFE {:.0f}'.format(itr, test_loss.avg, test_nfe.avg)
         logger.info(log_message)
 
-
-    # if not enough iters hit, print now
-    print(args.save, '    ', args.data)
-    np.save(args.save + '/' + args.data + '_' + args.solver + '_results.npy', res)
-
-    torch.save({
-        'args': args,
-        'state_dict': model.state_dict(),
-    }, os.path.join(args.save, 'checkptEnd.pth'))
 
 

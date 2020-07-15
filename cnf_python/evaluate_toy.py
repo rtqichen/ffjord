@@ -1,13 +1,6 @@
-# try:
-#     import matplotlib
-#     matplotlib.use('TkAgg')
-#     import matplotlib.pyplot as plt
-# except:
 import matplotlib
 matplotlib.use('agg') # for linux server with no tkinter
 import matplotlib.pyplot as plt
-
-
 from matplotlib import rc
 rc('font', **{'family': 'sans-serif', 'sans-serif': ['Helvetica']})
 rc('text', usetex=True)
@@ -33,7 +26,7 @@ from train_misc import build_model_tabular
 
 from diagnostics.viz_toy import save_trajectory, trajectory_to_video
 
-SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams']
+SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams', 'do']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
 parser.add_argument(
     '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons', '2spirals', 'checkerboard', 'rings'],

@@ -22,13 +22,12 @@ import lib.layers.odefunc as odefunc
 
 from train_misc import standard_normal_logprob
 from train_misc import set_cnf_options, count_nfe, count_parameters, count_total_time
-from train_misc import add_spectral_norm, spectral_norm_power_iteration
 from train_misc import create_regularization_fns, get_regularization, append_regularization_to_log
 from train_misc import build_model_tabular
 
 from diagnostics.viz_toy import save_trajectory, trajectory_to_video
 
-SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams']
+SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams', 'fixed_adams', 'do']
 parser = argparse.ArgumentParser('Continuous Normalizing Flow')
 parser.add_argument(
     '--data', choices=['swissroll', '8gaussians', 'pinwheel', 'circles', 'moons', '2spirals', 'checkerboard', 'rings'],
@@ -56,7 +55,6 @@ parser.add_argument('--test_rtol', type=float, default=None)
 
 parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
 parser.add_argument('--rademacher', type=eval, default=False, choices=[True, False])
-parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
 parser.add_argument('--batch_norm', type=eval, default=False, choices=[True, False])
 parser.add_argument('--bn_lag', type=float, default=0)
 
@@ -134,7 +132,6 @@ if __name__ == '__main__':
 
     regularization_fns, regularization_coeffs = create_regularization_fns(args)
     model = build_model_tabular(args, 2, regularization_fns).to(device)
-    if args.spectral_norm: add_spectral_norm(model)
     set_cnf_options(args, model)
 
     logger.info(model)
@@ -150,30 +147,10 @@ if __name__ == '__main__':
 
     end = time.time()
     best_loss = float('inf')
-    # plot setup before training
-    # with torch.no_grad():
-    #     model.eval()
-    #     p_samples = toy_data.inf_train_gen(args.data, batch_size=2000)
-    #
-    #     sample_fn, density_fn = get_transforms(model)
-    #
-    #     plt.figure(figsize=(9, 3))
-    #     visualize_transform(
-    #         p_samples, torch.randn, standard_normal_logprob, transform=sample_fn, inverse_transform=density_fn,
-    #         samples=True, npts=800, device=device
-    #     )
-    #     fig_filename = os.path.join(args.save, 'figs', 'start.jpg')
-    #     utils.makedirs(os.path.dirname(fig_filename))
-    #     plt.savefig(fig_filename)
-    #     plt.close()
-    #     model.train()
 
     model.train()
     for itr in range(1, args.niters + 1):
-        # plot the first thing
-
         optimizer.zero_grad()
-        if args.spectral_norm: spectral_norm_power_iteration(model, 1)
 
         loss = compute_loss(args, model)
         loss_meter.update(loss.item())
@@ -200,8 +177,8 @@ if __name__ == '__main__':
         tt_meter.update(total_time)
 
         log_message = (
-            'Iter {:04d} | Time {:.4f}({:.4f}) | Loss {:.6f}({:.6f}) | NFE Forward {:.0f}({:.1f})'
-            ' | NFE Backward {:.0f}({:.1f}) | CNF Time {:.4f}({:.4f})'.format(
+            'Iter {:04d} | Time {:.4f}({:.2f}) | Loss {:.6f}({:.6f}) | NFE Forward {:.0f}({:.1f})'
+            ' | NFE Backward {:.0f}({:.1f}) | CNF Time {:.2f}({:.2f})'.format(
                 itr, time_meter.val, time_meter.sum, loss_meter.val, loss_meter.avg, nfef_meter.val, nfef_meter.sum,
                 nfeb_meter.val, nfeb_meter.sum, tt_meter.val, tt_meter.avg
             )
@@ -250,8 +227,4 @@ if __name__ == '__main__':
 
     logger.info('Training has finished.')
 
-    save_traj_dir = os.path.join(args.save, 'trajectory')
-    logger.info('Plotting trajectory to {}'.format(save_traj_dir))
-    data_samples = toy_data.inf_train_gen(args.data, batch_size=2000)
-    save_trajectory(model, data_samples, save_traj_dir, device=device)
-    trajectory_to_video(save_traj_dir)
+
