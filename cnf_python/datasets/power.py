@@ -1,6 +1,6 @@
 import numpy as np
 
-from cnf_python import datasets
+import datasets
 
 
 class POWER:

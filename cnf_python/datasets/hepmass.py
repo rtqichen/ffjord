@@ -3,7 +3,7 @@ import numpy as np
 from collections import Counter
 from os.path import join
 
-from cnf_python import datasets
+import datasets
 
 
 class HEPMASS:

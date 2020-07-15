@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-from cnf_python import datasets
+import datasets
 
 
 class GAS:
