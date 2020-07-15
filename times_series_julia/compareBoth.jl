@@ -1,9 +1,5 @@
 # compareBoth.jl
 #
-
-# TODO: timings are unfair because initial point includes
-# precompilation perhaps????? how do I fix? Run in blocks
-
 using Flux
 using DiffEqFlux
 using DifferentialEquations
@@ -12,9 +8,6 @@ using LinearAlgebra
 using Random
 using Printf
 using LaTeXStrings
-# using CPUTime
-
-# fnt = font("Courier")
 
 ## functions
 # shared
@@ -37,7 +30,7 @@ end
 
 
 ## setup
-u0 = Float64[2.; 0.] # optimize TODO: make @SVector static array
+u0 = Float64[2.; 0.]
 datasize = 30
 tspan = (0.0,1.5)
 
@@ -54,7 +47,7 @@ doDerivCheck=false
 dudt = initDUDT(seed)
 ps = Flux.params(dudt)
 
-################ OD
+# OD #
 
 tpode = []
 reltol = 1e-7;
@@ -184,19 +177,12 @@ cbOD = function () # callback function to observe/ training
             Jt = sum(abs2,ode_data .- predict_n_ode(dudtCopy))
             err0 = abs(Jt.data-J0.data)
             err1 = abs(Jt.data-J0.data-h*dJdth)
-            # println(err1)
-            if dJ isa TrackedArray # TODO figure out what is happening to make this necessary
+            if dJ isa TrackedArray
                 hisErr[k,:] = [h err0 err1.data]
             else # if Float64
                 hisErr[k,:] = [h err0 err1]
             end
-
-            # println("h=$(h)\terr0=$(err0)\terr1=$(err1)")
         end
-
-        # for k=1:20
-        #     println("$(hisErr[k,1])\t$(hisErr[k,3])\\\\")
-        # end
 
         p = plot(hisErr[:,1],hisErr[:,2],linewidth=5,
             title="Opt.-Disc. Derivative Check iter=$(length(his)-1)\neigs: " * sEigs,
@@ -205,13 +191,9 @@ cbOD = function () # callback function to observe/ training
         plot!(p, hisErr[:,1],hisErr[:,3],linewidth=5,
               label="E1",legend=:topleft)
 
-
         savefig(p,"image/tmp/seed$(seed)-derivCheckNODE-iter-$(length(his)-1).pdf")
 
     end
-
-
-
 end
 
 # Display the ODE with the initial parameter values.
@@ -225,14 +207,14 @@ tspanlong = (0.0,multT*1.5)
 tlong = range(tspanlong[1],tspanlong[2],length=multT*datasize)
 extra_OD = neural_ode(dudt,u0,tspanlong,Tsit5(),saveat=tlong,reltol=reltol,abstol=abstol)
 
-####################
+#----------------------------------
 
 
 # now do the discretize-Optimize approach
 
 dudt = initDUDT(seed)
 ps = Flux.params(dudt)
-################ Discretize-Optimize
+# Discretize-Optimize #
 
 
 struct RK4Step
