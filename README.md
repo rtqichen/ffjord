@@ -16,11 +16,12 @@ Please cite as
     }
 
 
+## Setup
 
 There are two problem types, each with its own setup instructions and coding language:
 CNFs (in Python) and Time Series Regression (in Julia)
 
-### CNFs Python Setup:
+#### CNFs Python Setup:
 
 ```
 cd cnf_python # run all commands for the cnfs from this location
@@ -38,7 +39,7 @@ python3 train_tabular.py --data miniboone --nhidden 2 --hdim_factor 20 --num_blo
 ```
 
 
-### Times Series Julia Setup:
+#### Times Series Julia Setup:
 
 
 
