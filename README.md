@@ -1,21 +1,53 @@
-# DOvsOD_NeuralODEs 
-DO vs OD for neural ODES in Times Series Regression and Conitnuous Normalizing Flows
+# Discretize-Optimize vs Optimize-Discretize for Neural ODEs
+
+## Associated Publication
+
+Discretize-Optimize vs. Optimize-Discretize for Time-Series Regression and Continuous Normalizing Flows
+https://arxiv.org/abs/2006.00104
+
+Please cite as
+    
+    @article{onken2020discretizeoptimize,
+        title={Discretize-Optimize vs. Optimize-Discretize for Time-Series Regression and Continuous Normalizing Flows},
+        author={Derek Onken and Lars Ruthotto},
+        year={2020},
+        journal = {arXiv preprint arXiv:2005.13420},
+    }
 
 
-Setup:
+## Setup
+
+There are two problem types, each with its own setup instructions and coding language:
+CNFs (in Python) and Time Series Regression (in Julia)
+
+#### CNFs Python Setup:
 
 ```
+cd cnf_python # run all commands for the cnfs from this location
 virtualenv -p python3 neurEnv
 source neurEnv/bin/activate
 pip install -r requirements.txt
 pip install torch==1.2.0+cu92 torchvision==0.4.0+cu92 -f https://download.pytorch.org/whl/torch_stable.html
 ```
 
-
-commands to run:
+train and evlauate toy DO model:
+```
 
 ```
-python3 train_tabular.py --data miniboone --nhidden 2 --hdim_factor 20 --num_blocks 1 --nonlinearity softplus --batch_size 5000 --test_batch_size 1000 --lr 1e-3 --solver rk4 --step_size 0.25 --test_solver dopri5 --save experiments/cnf/DO/miniboone/rk4 
+
+
+train and evaluate miniboone DO model:
+
 ```
+python3 train_tabular.py --data miniboone --nhidden 2 --hdim_factor 20 --num_blocks 1 --nonlinearity softplus --batch_size 5000 --test_batch_size 1000 --lr 1e-3 --solver do --step_size 0.25 --test_solver do --test_step_size 0.10   --save experiments/cnf/miniboone/DO/rk4 
+
+python evaluate_tabular.py --data miniboone --resume experiments/cnf/miniboone/DO/rk4/checkpt.pth --batch_size 1000
+```
+
+To run other models, you'll need to download the preprocessed data from Papamakarios's MAF paper found at https://zenodo.org/record/1161203#.XbiVGUVKhgi. Place the data in the data folder. We've done miniboone for you since it's small.
+
+
+#### Times Series Julia Setup:
+
 
 

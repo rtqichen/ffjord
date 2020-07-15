@@ -1,13 +1,10 @@
 import argparse
 import os
 import time
-
 import torch
 
 import lib.utils as utils
 import lib.layers.odefunc as odefunc
-from lib.custom_optimizers import Adam
-
 import datasets
 import numpy as np
 
@@ -15,12 +12,7 @@ from train_misc import standard_normal_logprob
 from train_misc import set_cnf_options, count_nfe, count_parameters, count_total_time
 from train_misc import create_regularization_fns, get_regularization, append_regularization_to_log
 from train_misc import build_model_tabular, override_divergence_fn
-
 from train_tabular import *
-
-import h5py
-
-
 
 # download data from https://zenodo.org/record/1161203#.XbiVGUVKhgi
 
@@ -41,7 +33,7 @@ parser.add_argument('--train_T', type=eval, default=True)
 parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
 parser.add_argument("--nonlinearity", type=str, default="softplus", choices=odefunc.NONLINEARITIES)
 
-parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS) # default='dopri5'
+parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
 parser.add_argument('--atol', type=float, default=1e-8)
 parser.add_argument('--rtol', type=float, default=1e-6)
 parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
@@ -57,8 +49,8 @@ parser.add_argument('--batch_norm', type=eval, default=False, choices=[True, Fal
 parser.add_argument('--bn_lag', type=float, default=0)
 
 parser.add_argument('--early_stopping', type=int, default=30)
-parser.add_argument('--batch_size', type=int, default=1000) # default=1000
-parser.add_argument('--test_batch_size', type=int, default=None) # default=None
+parser.add_argument('--batch_size', type=int, default=1000)
+parser.add_argument('--test_batch_size', type=int, default=None)
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--weight_decay', type=float, default=1e-6)
 
@@ -70,12 +62,12 @@ parser.add_argument('--JFrobint', type=float, default=None, help="int_t ||df/dx|
 parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df_i/dx_i||_F")
 parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
 
-parser.add_argument('--resume', type=str, default='experiments/cnf/miniboone/OD/checkpt.pth') # default = None
+parser.add_argument('--resume', type=str, default=None)
 parser.add_argument('--save', type=str, default='experiments/cnf')
 parser.add_argument('--evaluate', action='store_true')
 parser.add_argument('--val_freq', type=int, default=200)
 parser.add_argument('--log_freq', type=int, default=10)
-parser.add_argument('--gpu', type=int, default=0) 
+parser.add_argument('--gpu', type=int, default=0)
 args = parser.parse_args()
 
 # logger
@@ -89,16 +81,9 @@ if args.layer_type == "blend":
 
 logger.info(args)
 
-
-bSaveH5  = True # save the results as an h5
-bInverse = True # check one batch for inverse error
+test_batch_size = args.test_batch_size if args.test_batch_size else args.batch_size
 
 if __name__ == '__main__':
-
-    test_batch_size = args.test_batch_size if args.test_batch_size else args.batch_size
-
-    sFilePath = args.data + 'TestFFJORD.h5'
-    h5file = h5py.File(sFilePath, 'w')
 
     device = torch.device("cuda:" + str(args.gpu) if torch.cuda.is_available() else "cpu")
     cvt = lambda x: x.type(torch.float32).to(device, non_blocking=True)
@@ -112,6 +97,7 @@ if __name__ == '__main__':
 
     regularization_fns, regularization_coeffs = create_regularization_fns(args)
     model = build_model_tabular(args, data.n_dims, regularization_fns).to(device)
+    set_cnf_options(args, model)
 
     for k in model.state_dict().keys():
         logger.info(k)
@@ -119,7 +105,6 @@ if __name__ == '__main__':
     if args.resume is not None:
 
         logger.info('Training has finished.')
-        # model = restore_model(model, os.path.join(args.resume, 'checkpt.pth')).to(device)
         model = restore_model(model, args.resume).to(device)
         set_cnf_options(args, model)
     else:
@@ -134,96 +119,26 @@ if __name__ == '__main__':
 
     override_divergence_fn(model, "brute_force")
 
-    end = time.time()
+    bInverse = True  # check one batch for inverse error, for speed
 
-    nTest = data.tst.x.shape[0] # number of test samples
-
-    if bInverse:
-        logger.info('checking inverse error')
     with torch.no_grad():
-        test_loss   = utils.AverageMeter()
-        test_nfe    = utils.AverageMeter()
-        timeMeter   = utils.AverageMeter()
-        invErrMeter = utils.AverageMeter()
-
-        dsetx     = h5file.create_dataset('x'      , (nTest, data.tst.x.shape[1]) ) # superfluous, matches data
-        dsetFx    = h5file.create_dataset('fx'     , (nTest, data.tst.x.shape[1]) )
-        dsetFinfx = h5file.create_dataset('finvfx' , (nTest, data.tst.x.shape[1])  )
-
+        test_loss = utils.AverageMeter()
+        test_nfe = utils.AverageMeter()
         for itr, x in enumerate(batch_iter(data.tst.x, batch_size=test_batch_size)):
 
             x = cvt(x)
             test_loss.update(compute_loss(x, model).item(), x.shape[0])
             test_nfe.update(count_nfe(model))
-            
-            timeMeter.update(time.time() - end)
 
-            dsetx[itr * test_batch_size: min((itr + 1) * test_batch_size, nTest)] = x.detach().cpu().numpy()
-            
-            if bInverse: # check the inverse error
-                # logger.info('checking inverse error of firstbatch')
-                z = model(x,reverse=False) # push forward
-                xpred = model(z, reverse=True) # inverse
-                invErr = torch.norm(xpred-x) / x.shape[0]
-                invErrMeter.update( invErr.item() , x.shape[0])
-                # print('inverse norm for first batch: ', invErrMeter.val )
-                # bInverse=False
+            if bInverse:  # check the ivnerse error
+                z = model(x, reverse=False)  # push forward
+                xpred = model(z, reverse=True)  # inverse
+                logger.info('inverse norm for first batch: ')
+                logger.info(torch.norm(xpred - x).item() / x.shape[0])
+                bInverse = False
 
-                dsetFx[itr * test_batch_size: min((itr + 1) * test_batch_size, nTest)] = z.detach().cpu().numpy()
-                dsetFinfx[itr * test_batch_size: min((itr + 1) * test_batch_size, nTest)] = xpred.detach().cpu().numpy()
-
-            log_message = 'Progress {:.2f} | Time {:.2f} sec | Test Loss {:.3f} | NFE {:.0f}'.format(
-                100. * itr / (nTest / test_batch_size) , timeMeter.val,  test_loss.val, test_nfe.val
-            )
-            logger.info(log_message)
-            # logger.info('Progress: {:.2f}%'.format(100. * itr / (data.tst.x.shape[0] / test_batch_size)))
-            end = time.time()
-            # break # just do 1 batch
-            
-        log_message = '[TEST] Iter {:06d} | Total Time {:.2f} sec | Test Loss {:.3f} | NFE {:.0f} | invErr {:.3e}'.format(itr,timeMeter.sum,  test_loss.avg, test_nfe.avg, invErrMeter.avg)
+            logger.info('Progress: {:.2f}%'.format(100. * itr / (data.tst.x.shape[0] / test_batch_size)))
+        log_message = '[TEST] Iter {:06d} | Test Loss {:.6f} | NFE {:.0f}'.format(itr, test_loss.avg, test_nfe.avg)
         logger.info(log_message)
-
-        a = np.array(dsetx)
-        npInvErr =  np.linalg.norm(  a - np.array(dsetFinfx) ) / a.shape[0]
-        logger.info('numpy invErr: {:.3e}'.format(  npInvErr  ))
-
-
-        h5file.create_dataset('nWeights', data = nWeights)
-        h5file.create_dataset('testTime', data = timeMeter.sum)
-        h5file.create_dataset('testBatchSize', data = test_batch_size)
-        h5file.create_dataset('invErr'  , data = npInvErr)
-        h5file.create_dataset('invErrTorch'  , data = invErrMeter.avg)
-        # h5file.create_dataset('fx'      , data = z.detach().cpu().numpy())
-        # h5file.create_dataset('finvfx'  , data = xpred.detach().cpu().numpy())
-
-        # generate
-        logger.info('performing generation in batches of size {:d}-by-{:d}'.format( test_batch_size,z.shape[1]  ))
-        nGen = 100000 # 15000 # number of points to sample from the multivariate_normal
-
-        dsetNorm = h5file.create_dataset('normSamples', ( nGen, z.shape[1]))
-        dsetGen  = h5file.create_dataset('genSamples', (nGen, z.shape[1]))
-
-        nBatches = int(np.ceil(nGen / test_batch_size))
-        for i in range(nBatches):
-            if i == nBatches-1:
-                normSamples = cvt(torch.randn( nGen - i*test_batch_size  , z.shape[1]))
-                genSamples = model(normSamples, reverse=True)
-            else:
-                normSamples = cvt(torch.randn(test_batch_size, z.shape[1]))
-                genSamples = model(normSamples, reverse=True)
-
-            dsetNorm[i * test_batch_size: min( (i+1)*test_batch_size , nGen) ] = normSamples.detach().cpu().numpy()
-            dsetGen[i * test_batch_size: min( (i+1)*test_batch_size , nGen) ]  = genSamples.detach().cpu().numpy()
-
-
-        h5file.close()
-        logger.info('generation complete')
-        logger.info('saved to {:}'.format(sFilePath))
-
-
-
-
-
-
 
 
