@@ -1,8 +1,5 @@
-
-
-### DO vs OD for neural ODES in Times Series Regression and Conitnuous Normalizing Flows
-
-
+# DOvsOD_Neural_ODEs 
+DO vs OD for neural ODES in Times Series Regression and Conitnuous Normalizing Flows
 
 
 Setup:
@@ -20,7 +17,5 @@ commands to run:
 ```
 python3 train_tabular.py --data miniboone --nhidden 2 --hdim_factor 20 --num_blocks 1 --nonlinearity softplus --batch_size 5000 --test_batch_size 1000 --lr 1e-3 --solver rk4 --step_size 0.25 --test_solver dopri5 --save experiments/cnf/DO/miniboone/rk4 
 ```
-
-
 
 
