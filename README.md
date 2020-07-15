@@ -1,4 +1,4 @@
-# DOvsOD_Neural_ODEs 
+# DOvsOD_NeuralODEs 
 DO vs OD for neural ODES in Times Series Regression and Conitnuous Normalizing Flows
 
 
