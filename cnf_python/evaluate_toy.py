@@ -2,8 +2,6 @@ import matplotlib
 matplotlib.use('agg') # for linux server with no tkinter
 import matplotlib.pyplot as plt
 from matplotlib import rc
-# rc('font', **{'family': 'sans-serif', 'sans-serif': ['Helvetica']})
-# rc('text', usetex=True)
 
 import argparse
 import os
@@ -57,7 +55,8 @@ parser.add_argument('--batch_norm', type=eval, default=False, choices=[True, Fal
 parser.add_argument('--bn_lag', type=float, default=0)
 
 parser.add_argument('--niters', type=int, default=10000)
-parser.add_argument('--batch_size', type=int, default=2000)
+parser.add_argument('--batch_size', type=int, default=100)
+parser.add_argument('--test_batch_size', type=int, default=1000)
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--weight_decay', type=float, default=1e-5)
 
