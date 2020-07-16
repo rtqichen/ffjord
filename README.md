@@ -37,7 +37,6 @@ python3 train_toy.py --data 8gaussians --solver do --step_size 0.05 --save exper
 python evaluate_toy.py --data 8gaussians --resume experiments/cnf/toy/8gaussians/do/checkpt.pth --solver do --batch_size 2000
 ```
 
-
 train and evaluate miniboone DO model:
 
 ```
@@ -49,7 +48,33 @@ python evaluate_tabular.py --data miniboone --resume experiments/cnf/miniboone/D
 To run other models, you'll need to download the preprocessed data from Papamakarios's MAF paper found at https://zenodo.org/record/1161203#.XbiVGUVKhgi. Place the data in the data folder. We've done miniboone for you since it's small.
 
 
-#### Times Series Julia Setup:
+#### Time Series Julia Setup:
+
+```
+# start up julia, may need to adjust the path
+exec '/Applications/Julia-1.2.app/Contents/Resources/julia/bin/julia'
+
+# change into the time series directory
+cd("path/times_series_julia/")
+
+# setup necessary packages
+using Pkg
+Pkg.add("Flux")
+Pkg.add("DiffEqFlux")
+Pkg.add("DifferentialEquations")
+Pkg.add("Plots")
+Pkg.add("LinearAlgebra")
+Pkg.add("Random")
+Pkg.add("Printf")
+Pkg.add("LaTeXStrings")
+```
+
+Run the time series comparison:
+```
+include("compareBoth.jl")
+```
+
+
 
 
 
