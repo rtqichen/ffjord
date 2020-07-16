@@ -39,7 +39,7 @@ python evaluate_toy.py --data 8gaussians --resume experiments/cnf/toy/8gaussians
 ```
 
 
-train and evaluate miniboone DO  model:
+train and evaluate miniboone DO model:
 
 ```
 python3 train_tabular.py --data miniboone --nhidden 2 --hdim_factor 20 --num_blocks 1 --nonlinearity softplus --batch_size 5000 --test_batch_size 1000 --lr 1e-3 --solver do --step_size 0.25 --test_solver do --test_step_size 0.10   --save experiments/cnf/miniboone/DO/rk4 
