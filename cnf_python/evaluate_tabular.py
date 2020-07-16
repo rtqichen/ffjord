@@ -1,13 +1,10 @@
 import argparse
 import os
 import time
-
 import torch
 
 import lib.utils as utils
 import lib.layers.odefunc as odefunc
-from lib.custom_optimizers import Adam
-
 import datasets
 import numpy as np
 
@@ -15,7 +12,6 @@ from train_misc import standard_normal_logprob
 from train_misc import set_cnf_options, count_nfe, count_parameters, count_total_time
 from train_misc import create_regularization_fns, get_regularization, append_regularization_to_log
 from train_misc import build_model_tabular, override_divergence_fn
-
 from train_tabular import *
 
 # download data from https://zenodo.org/record/1161203#.XbiVGUVKhgi
