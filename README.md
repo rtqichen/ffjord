@@ -1,5 +1,4 @@
-# DOvsOD_NeuralODEs 
-Discretize-Optimize vs Optimize-Discretize for Neural ODES
+# Discretize-Optimize vs Optimize-Discretize for Neural ODES
 
 ## Associated Publication
 
