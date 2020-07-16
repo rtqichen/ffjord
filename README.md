@@ -1,4 +1,4 @@
-# Discretize-Optimize vs Optimize-Discretize for Neural ODES
+# Discretize-Optimize vs Optimize-Discretize for Neural ODEs
 
 ## Associated Publication
 
