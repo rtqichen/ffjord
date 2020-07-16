@@ -31,9 +31,11 @@ pip install -r requirements.txt
 pip install torch==1.2.0+cu92 torchvision==0.4.0+cu92 -f https://download.pytorch.org/whl/torch_stable.html
 ```
 
-train and evlauate toy DO model:
+train and evaluate toy DO model:
 ```
+python3 train_toy.py --data 8gaussians --solver do --step_size 0.05 --save experiments/cnf/toy/8gaussians/do 
 
+python evaluate_toy.py --data 8gaussians --resume experiments/cnf/toy/8gaussians/do/checkpt.pth --solver do --batch_size 2000
 ```
 
 
