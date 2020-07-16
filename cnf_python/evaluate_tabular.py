@@ -109,7 +109,6 @@ if __name__ == '__main__':
     if args.resume is not None:
 
         logger.info('Training has finished.')
-        # model = restore_model(model, os.path.join(args.resume, 'checkpt.pth')).to(device)
         model = restore_model(model, args.resume).to(device)
         set_cnf_options(args, model)
     else:
@@ -124,7 +123,7 @@ if __name__ == '__main__':
 
     override_divergence_fn(model, "brute_force")
 
-    bInverse = True  # check one batch for inverse error
+    bInverse = True  # check one batch for inverse error, for speed
 
     with torch.no_grad():
         test_loss = utils.AverageMeter()
@@ -136,13 +135,14 @@ if __name__ == '__main__':
             test_nfe.update(count_nfe(model))
 
             if bInverse:  # check the ivnerse error
-                logger.info('checking inverse error of firstbatch')
                 z = model(x, reverse=False)  # push forward
                 xpred = model(z, reverse=True)  # inverse
-                print('inverse norm for first batch: ', torch.norm(xpred - x).item())
+                logger.info('inverse norm for first batch: ')
+                logger.info(torch.norm(xpred - x).item() / x.shape[0])
                 bInverse = False
 
             logger.info('Progress: {:.2f}%'.format(100. * itr / (data.tst.x.shape[0] / test_batch_size)))
-            # break # just do 1 batch
         log_message = '[TEST] Iter {:06d} | Test Loss {:.6f} | NFE {:.0f}'.format(itr, test_loss.avg, test_nfe.avg)
         logger.info(log_message)
+
+
