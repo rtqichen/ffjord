@@ -85,4 +85,10 @@ julia code is heavily based on https://julialang.org/blog/2019/01/fluxdiffeq/
 This material is in part based upon work supported by the National Science Foundation under Grant Number 1751636. Any opinions, findings, and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the National Science Foundation.
 
 
+To run other models, you'll need to download the preprocessed data from Papamakarios's MAF paper found at https://zenodo.org/record/1161203#.XbiVGUVKhgi. Place the data in the data folder. We've done miniboone for you since it's small.
+
+
+#### Times Series Julia Setup:
+
+
 
